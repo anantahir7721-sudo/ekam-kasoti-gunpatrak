@@ -16,6 +16,7 @@ import {
   CustomSubjectRecord,
 } from '../services/subjectService';
 import { exportEkamKasotiExcel, printEkamKasotiA4, StudentMarkEntry } from '../utils/ekamKasotiExport';
+import { TermExamMarksManager } from './TermExamMarksManager';
 import {
   Award,
   Save,
@@ -42,6 +43,7 @@ interface MarksManagerProps {
   students: Student[];
   marks: MarkRecord[];
   onRefresh: () => void;
+  defaultSystem?: 'term_exams' | 'ekam_kasoti';
 }
 
 // Helper to resolve current or legacy sub-question marks seamlessly
@@ -116,9 +118,11 @@ export const MarksManager: React.FC<MarksManagerProps> = ({
   students,
   marks,
   onRefresh,
+  defaultSystem = 'ekam_kasoti',
 }) => {
   // Navigation & Selection state - strictly supports Standard 9, 10, 11, 12
   const [selectedStandard, setSelectedStandard] = useState<AllowedStandard>('9');
+  const [examSystem, setExamSystem] = useState<'term_exams' | 'ekam_kasoti'>(defaultSystem);
   
   // Custom subjects added by school
   const [customSubjects, setCustomSubjects] = useState<CustomSubjectRecord[]>([]);
@@ -531,8 +535,47 @@ export const MarksManager: React.FC<MarksManagerProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner: Single Exam Focus (Ekam Kasoti - 1) */}
-      <div className="glass-panel p-5 sm:p-6 rounded-3xl border border-white/10 shadow-lg relative overflow-hidden">
+      {/* Top System Switcher: Term & Annual Exams vs Ekam Kasoti */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-2 rounded-2xl bg-slate-900/90 border border-white/10 shadow-lg">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setExamSystem('term_exams')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              examSystem === 'term_exams'
+                ? 'bg-[#9d512d] text-white shadow-md shadow-[#9d512d]/30'
+                : 'text-[#a99f91] hover:text-white'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>સત્રાંત અને વાર્ષિક પરીક્ષાઓ (Std 9, 10, 11 - સત્ર 1, 2, 3)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setExamSystem('ekam_kasoti')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              examSystem === 'ekam_kasoti'
+                ? 'bg-[#9d512d] text-white shadow-md shadow-[#9d512d]/30'
+                : 'text-[#a99f91] hover:text-white'
+            }`}
+          >
+            <Award className="w-4 h-4" />
+            <span>એકમ કસોટી (Unit Test - 25 ગુણ)</span>
+          </button>
+        </div>
+      </div>
+
+      {examSystem === 'term_exams' ? (
+        <TermExamMarksManager
+          school={school}
+          students={students}
+          marks={marks}
+          onRefresh={onRefresh}
+        />
+      ) : (
+        <>
+          {/* Top Banner: Single Exam Focus (Ekam Kasoti - 1) */}
+          <div className="glass-panel p-5 sm:p-6 rounded-3xl border border-white/10 shadow-lg relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -1089,6 +1132,8 @@ export const MarksManager: React.FC<MarksManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

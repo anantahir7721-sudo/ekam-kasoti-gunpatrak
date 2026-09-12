@@ -196,7 +196,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </div>
 
         <h2 className="mt-4 text-center text-2xl font-extrabold tracking-tight text-white">
-          એકમ કસોટી ગુણપત્રક
+          Vidyalayam (વિદ્યાલયમ)
         </h2>
         <p className="mt-1 text-center text-xs text-emerald-400 font-semibold tracking-wide">
           Created by NR Chad

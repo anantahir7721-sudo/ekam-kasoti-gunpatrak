@@ -192,7 +192,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-extrabold text-white tracking-tight">
-                  એકમ કસોટી ગુણપત્રક — Admin Dashboard
+                  Vidyalayam — Admin Dashboard
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-950/80 border border-red-800/80 text-red-400 uppercase tracking-wide">
                   Master Control
@@ -761,7 +761,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <footer className="bg-slate-950/90 border-t border-white/10 py-5 text-center text-xs text-slate-400 space-y-1 mt-auto">
         <div className="font-bold text-white tracking-wide">
-          એકમ કસોટી ગુણપત્રક
+          Vidyalayam (વિદ્યાલયમ)
         </div>
         <div className="text-emerald-400 font-medium">
           Created by NR Chad

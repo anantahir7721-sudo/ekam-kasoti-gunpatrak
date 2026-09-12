@@ -64,14 +64,9 @@ export function subscribeToStudents(
  */
 export async function addStudent(
   schoolId: string,
-  data: {
+  data: Partial<Omit<Student, 'id' | 'schoolId' | 'createdAt'>> & {
     studentName: string;
     standard: string;
-    grNumber?: string;
-    rollNumber?: string;
-    division?: string;
-    gender?: 'Boy' | 'Girl' | 'Other';
-    academicYear?: string;
   }
 ): Promise<Student> {
   const studentsCol = collection(db, 'schools', schoolId, 'students');
@@ -80,10 +75,26 @@ export async function addStudent(
     studentName: data.studentName.trim(),
     standard: data.standard.trim(),
     createdAt: new Date().toISOString(),
+    ...(data.diseCode ? { diseCode: data.diseCode.trim() } : {}),
     ...(data.grNumber ? { grNumber: data.grNumber.trim() } : {}),
+    ...(data.section ? { section: data.section.trim(), division: data.section.trim() } : {}),
+    ...(data.division && !data.section ? { section: data.division.trim(), division: data.division.trim() } : {}),
     ...(data.rollNumber ? { rollNumber: data.rollNumber.trim() } : {}),
-    ...(data.division ? { division: data.division.trim() } : {}),
     ...(data.gender ? { gender: data.gender } : {}),
+    ...(data.dob ? { dob: data.dob.trim() } : {}),
+    ...(data.doa ? { doa: data.doa.trim() } : {}),
+    ...(data.address ? { address: data.address.trim() } : {}),
+    ...(data.motherName ? { motherName: data.motherName.trim() } : {}),
+    ...(data.fatherName ? { fatherName: data.fatherName.trim() } : {}),
+    ...(data.caste ? { caste: data.caste.trim() } : {}),
+    ...(data.bloodGroup ? { bloodGroup: data.bloodGroup.trim() } : {}),
+    ...(data.contactNumber ? { contactNumber: data.contactNumber.trim(), mobileNumber: data.contactNumber.trim() } : {}),
+    ...(data.mobileNumber && !data.contactNumber ? { contactNumber: data.mobileNumber.trim(), mobileNumber: data.mobileNumber.trim() } : {}),
+    ...(data.fatherOccupation ? { fatherOccupation: data.fatherOccupation.trim() } : {}),
+    ...(data.motherOccupation ? { motherOccupation: data.motherOccupation.trim() } : {}),
+    ...(data.placeOfBirth ? { placeOfBirth: data.placeOfBirth.trim() } : {}),
+    ...(data.aadhaarNo ? { aadhaarNo: data.aadhaarNo.trim() } : {}),
+    ...(data.photoUrl ? { photoUrl: data.photoUrl.trim() } : {}),
     ...(data.academicYear ? { academicYear: data.academicYear.trim() } : {}),
   };
 
@@ -100,7 +111,7 @@ export async function addStudent(
  */
 export async function bulkAddStudents(
   schoolId: string,
-  studentsList: Array<{ studentName: string; standard: string }>
+  studentsList: Array<Partial<Omit<Student, 'id' | 'schoolId'>> & { studentName: string; standard: string }>
 ): Promise<number> {
   if (studentsList.length === 0) return 0;
 
@@ -118,6 +129,26 @@ export async function bulkAddStudents(
         studentName: item.studentName.trim(),
         standard: item.standard.trim(),
         createdAt: new Date().toISOString(),
+        ...(item.diseCode ? { diseCode: item.diseCode.trim() } : {}),
+        ...(item.grNumber ? { grNumber: item.grNumber.trim() } : {}),
+        ...(item.section ? { section: item.section.trim(), division: item.section.trim() } : {}),
+        ...(item.division && !item.section ? { section: item.division.trim(), division: item.division.trim() } : {}),
+        ...(item.rollNumber ? { rollNumber: item.rollNumber.trim() } : {}),
+        ...(item.gender ? { gender: item.gender } : {}),
+        ...(item.dob ? { dob: item.dob.trim() } : {}),
+        ...(item.doa ? { doa: item.doa.trim() } : {}),
+        ...(item.address ? { address: item.address.trim() } : {}),
+        ...(item.motherName ? { motherName: item.motherName.trim() } : {}),
+        ...(item.fatherName ? { fatherName: item.fatherName.trim() } : {}),
+        ...(item.caste ? { caste: item.caste.trim() } : {}),
+        ...(item.bloodGroup ? { bloodGroup: item.bloodGroup.trim() } : {}),
+        ...(item.contactNumber ? { contactNumber: item.contactNumber.trim(), mobileNumber: item.contactNumber.trim() } : {}),
+        ...(item.mobileNumber && !item.contactNumber ? { contactNumber: item.mobileNumber.trim(), mobileNumber: item.mobileNumber.trim() } : {}),
+        ...(item.fatherOccupation ? { fatherOccupation: item.fatherOccupation.trim() } : {}),
+        ...(item.motherOccupation ? { motherOccupation: item.motherOccupation.trim() } : {}),
+        ...(item.placeOfBirth ? { placeOfBirth: item.placeOfBirth.trim() } : {}),
+        ...(item.aadhaarNo ? { aadhaarNo: item.aadhaarNo.trim() } : {}),
+        ...(item.photoUrl ? { photoUrl: item.photoUrl.trim() } : {}),
       };
       batch.set(docRef, newStudentData);
     }
@@ -127,6 +158,129 @@ export async function bulkAddStudents(
   }
 
   return totalAdded;
+}
+
+/**
+ * Bulk upsert students: updates existing students if matched by GR No. or Name+Standard,
+ * otherwise inserts new student documents. Preserves existing student IDs and mark associations.
+ */
+export async function bulkUpsertStudents(
+  schoolId: string,
+  studentsList: Array<Partial<Omit<Student, 'id' | 'schoolId'>> & { studentName: string; standard: string }>,
+  existingStudents: Student[]
+): Promise<{ added: number; updated: number }> {
+  if (studentsList.length === 0) return { added: 0, updated: 0 };
+
+  // Map existing students by grNumber (lowercase) and by name+standard
+  const existingByGr = new Map<string, Student>();
+  const existingByNameStd = new Map<string, Student>();
+
+  for (const s of existingStudents) {
+    if (s.grNumber && s.grNumber.trim()) {
+      existingByGr.set(s.grNumber.trim().toLowerCase(), s);
+    }
+    const key = `${s.studentName.trim().toLowerCase()}_${String(s.standard).trim()}`;
+    existingByNameStd.set(key, s);
+  }
+
+  const chunkSize = 400;
+  let addedCount = 0;
+  let updatedCount = 0;
+
+  for (let i = 0; i < studentsList.length; i += chunkSize) {
+    const chunk = studentsList.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+
+    for (const item of chunk) {
+      const cleanName = item.studentName.trim();
+      const cleanStd = item.standard.trim();
+      const cleanGr = item.grNumber ? item.grNumber.trim().toLowerCase() : '';
+
+      // Check for match: first by GR number, then by Name + Standard
+      let match: Student | undefined;
+      if (cleanGr && existingByGr.has(cleanGr)) {
+        match = existingByGr.get(cleanGr);
+      } else {
+        const key = `${cleanName.toLowerCase()}_${cleanStd}`;
+        if (existingByNameStd.has(key)) {
+          match = existingByNameStd.get(key);
+        }
+      }
+
+      if (match) {
+        // Update existing student document, preserving student ID
+        const docRef = doc(db, 'schools', schoolId, 'students', match.id);
+        const updateData: Record<string, any> = {
+          studentName: cleanName,
+          standard: cleanStd,
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (item.diseCode !== undefined) updateData.diseCode = item.diseCode.trim();
+        if (item.grNumber !== undefined) updateData.grNumber = item.grNumber.trim();
+        if (item.section !== undefined) {
+          updateData.section = item.section.trim();
+          updateData.division = item.section.trim();
+        }
+        if (item.rollNumber !== undefined) updateData.rollNumber = item.rollNumber.trim();
+        if (item.gender !== undefined) updateData.gender = item.gender;
+        if (item.dob !== undefined) updateData.dob = item.dob.trim();
+        if (item.doa !== undefined) updateData.doa = item.doa.trim();
+        if (item.address !== undefined) updateData.address = item.address.trim();
+        if (item.motherName !== undefined) updateData.motherName = item.motherName.trim();
+        if (item.fatherName !== undefined) updateData.fatherName = item.fatherName.trim();
+        if (item.caste !== undefined) updateData.caste = item.caste.trim();
+        if (item.bloodGroup !== undefined) updateData.bloodGroup = item.bloodGroup.trim();
+        if (item.contactNumber !== undefined) {
+          updateData.contactNumber = item.contactNumber.trim();
+          updateData.mobileNumber = item.contactNumber.trim();
+        }
+        if (item.fatherOccupation !== undefined) updateData.fatherOccupation = item.fatherOccupation.trim();
+        if (item.motherOccupation !== undefined) updateData.motherOccupation = item.motherOccupation.trim();
+        if (item.placeOfBirth !== undefined) updateData.placeOfBirth = item.placeOfBirth.trim();
+        if (item.aadhaarNo !== undefined) updateData.aadhaarNo = item.aadhaarNo.trim();
+        if (item.photoUrl !== undefined) updateData.photoUrl = item.photoUrl.trim();
+
+        batch.set(docRef, updateData, { merge: true });
+        updatedCount++;
+      } else {
+        // Add new student document
+        const docRef = doc(collection(db, 'schools', schoolId, 'students'));
+        const newStudentData = {
+          schoolId,
+          studentName: cleanName,
+          standard: cleanStd,
+          createdAt: new Date().toISOString(),
+          ...(item.diseCode ? { diseCode: item.diseCode.trim() } : {}),
+          ...(item.grNumber ? { grNumber: item.grNumber.trim() } : {}),
+          ...(item.section ? { section: item.section.trim(), division: item.section.trim() } : {}),
+          ...(item.division && !item.section ? { section: item.division.trim(), division: item.division.trim() } : {}),
+          ...(item.rollNumber ? { rollNumber: item.rollNumber.trim() } : {}),
+          ...(item.gender ? { gender: item.gender } : {}),
+          ...(item.dob ? { dob: item.dob.trim() } : {}),
+          ...(item.doa ? { doa: item.doa.trim() } : {}),
+          ...(item.address ? { address: item.address.trim() } : {}),
+          ...(item.motherName ? { motherName: item.motherName.trim() } : {}),
+          ...(item.fatherName ? { fatherName: item.fatherName.trim() } : {}),
+          ...(item.caste ? { caste: item.caste.trim() } : {}),
+          ...(item.bloodGroup ? { bloodGroup: item.bloodGroup.trim() } : {}),
+          ...(item.contactNumber ? { contactNumber: item.contactNumber.trim(), mobileNumber: item.contactNumber.trim() } : {}),
+          ...(item.mobileNumber && !item.contactNumber ? { contactNumber: item.mobileNumber.trim(), mobileNumber: item.mobileNumber.trim() } : {}),
+          ...(item.fatherOccupation ? { fatherOccupation: item.fatherOccupation.trim() } : {}),
+          ...(item.motherOccupation ? { motherOccupation: item.motherOccupation.trim() } : {}),
+          ...(item.placeOfBirth ? { placeOfBirth: item.placeOfBirth.trim() } : {}),
+          ...(item.aadhaarNo ? { aadhaarNo: item.aadhaarNo.trim() } : {}),
+          ...(item.photoUrl ? { photoUrl: item.photoUrl.trim() } : {}),
+        };
+        batch.set(docRef, newStudentData);
+        addedCount++;
+      }
+    }
+
+    await batch.commit();
+  }
+
+  return { added: addedCount, updated: updatedCount };
 }
 
 /**
@@ -286,6 +440,52 @@ export async function saveBatchEkamKasotiMarks(
 }
 
 /**
+ * Save or update batch exam marks for any standard, exam type, and subject.
+ * Stored under /schools/{schoolId}/marks/{studentId_examId_subjectId}
+ */
+export async function saveBatchExamMarks(
+  schoolId: string,
+  records: Array<{
+    studentId: string;
+    studentName: string;
+    grNumber?: string;
+    rollNumber?: string;
+    standard: string;
+    division?: string;
+    examId: string; // 'pratham' | 'dwitiya' | 'varshik' | 'prelim' | 'internal'
+    examType: string; // Display name
+    academicYear: string;
+    subjectId: string;
+    subjectName: string;
+    totalObtained: number;
+    totalMax: number;
+    percentage?: number;
+    overallGrade?: string; // e.g. 'A1', 'B2', or 'AB'
+    questionMarks?: Record<string, number>;
+  }>
+): Promise<void> {
+  const batch = writeBatch(db);
+  const now = new Date().toISOString();
+
+  for (const record of records) {
+    const cleanExamId = (record.examId || 'exam').toLowerCase().trim();
+    const docId = `${record.studentId}_${cleanExamId}_${record.subjectId}`;
+    const docRef = doc(db, 'schools', schoolId, 'marks', docId);
+
+    const cleanDocData = stripUndefinedValues({
+      ...record,
+      schoolId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    batch.set(docRef, cleanDocData, { merge: true });
+  }
+
+  await batch.commit();
+}
+
+/**
  * Save or update Ekam Kasoti marks for a single student automatically as typed.
  * Stored under /schools/{schoolId}/marks/{studentId_subjectId}
  */
@@ -363,3 +563,40 @@ export async function testCrossSchoolAccessPrevention(currentSchoolId: string, t
     };
   }
 }
+
+/**
+ * Update school profile information.
+ * Excludes protected keys (status, ownerUid, id, diseCode) to satisfy Firestore Security Rules.
+ */
+export async function updateSchoolProfile(
+  schoolId: string,
+  profileData: {
+    schoolName?: string;
+    district?: string;
+    address?: string;
+    village?: string;
+    taluka?: string;
+    schoolType?: string;
+    medium?: string;
+    principalName?: string;
+    principalPhone?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    establishedYear?: string;
+  }
+): Promise<void> {
+  const schoolRef = doc(db, 'schools', schoolId);
+  const cleanData = stripUndefinedValues({
+    ...profileData,
+    updatedAt: new Date().toISOString(),
+  });
+
+  // Ensure forbidden keys are never included
+  delete cleanData.status;
+  delete cleanData.ownerUid;
+  delete cleanData.id;
+  delete cleanData.diseCode;
+
+  await updateDoc(schoolRef, cleanData);
+}
+

@@ -9,6 +9,17 @@ export interface School {
   status?: SchoolStatus; // defaults to 'approved' for legacy schools, 'pending' for new registrations
   createdAt: string;
   updatedAt?: string;
+  // Extended School Profile Information
+  address?: string;
+  village?: string;
+  taluka?: string;
+  schoolType?: string; // 'માધ્યમિક' | 'ઉચ્ચતર માધ્યમિક' | 'પ્રાથમિક' | 'સંયુક્ત'
+  medium?: string; // 'ગુજરાતી' | 'અંગ્રેજી' | 'હિન્દી'
+  principalName?: string;
+  principalPhone?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  establishedYear?: string;
 }
 
 export interface AdminRecord {
@@ -22,15 +33,62 @@ export type AllowedStandard = '9' | '10' | '11' | '12';
 export interface Student {
   id: string;
   schoolId: string; // Belongs to specific School UID
-  studentName: string;
+  studentName: string; // Name (As in GR)
   standard: AllowedStandard | string; // Allowed standards: 9, 10, 11, 12
   createdAt: string;
   updatedAt?: string;
-  grNumber?: string;
-  rollNumber?: string;
-  division?: string;
-  gender?: 'Boy' | 'Girl' | 'Other';
+  // Student Master Information fields
+  diseCode?: string; // School DISE Code
+  grNumber?: string; // GR No. (Searchable, unique school register no.)
+  section?: string; // Section (વર્ગ / સેક્શન દા.ત. A, B, C)
+  division?: string; // Legacy alias for section
+  rollNumber?: string; // Roll No.
+  dob?: string; // Date of Birth (જન્મ તારીખ)
+  doa?: string; // Date of Admission (પ્રવેશ તારીખ)
+  address?: string; // Residential Address (સરનામું)
+  motherName?: string; // Mother Name (માતાનું નામ)
+  fatherName?: string; // Father Name (પિતાનું નામ)
+  gender?: 'Boy' | 'Girl' | 'Other' | string; // Gender (જાતિ)
+  caste?: string; // Caste / Category (દા.ત. General, SEBC, SC, ST)
+  bloodGroup?: string; // Blood Group (A+, B+, O+, etc.)
+  photoUrl?: string; // Student Photo (Base64 / URL)
+  contactNumber?: string; // Mobile / Parent Contact Number
+  mobileNumber?: string; // Alias for contact number
+  fatherOccupation?: string; // Father's Occupation
+  motherOccupation?: string; // Mother's Occupation
+  placeOfBirth?: string; // Place of Birth (જન્મ સ્થળ)
+  aadhaarNo?: string; // Aadhaar / Unique ID (Securely handled)
+  studentId?: string; // Student ID
   academicYear?: string;
+}
+
+export interface Staff {
+  id: string;
+  schoolId: string;
+  fullName: string;
+  designation: string; // e.g. 'આચાર્યશ્રી', 'મદદનીશ શિક્ષક', 'વિષય શિક્ષક', 'ક્લાર્ક'
+  subject?: string;
+  qualification?: string;
+  dob?: string;
+  joiningDate?: string;
+  mobile?: string;
+  email?: string;
+  address?: string;
+  photoUrl?: string;
+  bloodGroup?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type RecognizedExamId = 'ekam_kasoti_1' | 'pratham_pariksha' | 'dwitiya_pariksha' | 'varshik_pariksha';
+
+export interface ExamInfo {
+  id: RecognizedExamId | string;
+  titleGujarati: string;
+  titleEnglish: string;
+  standard: AllowedStandard | string;
+  defaultMaxMarks: number;
+  academicYear: string;
 }
 
 export interface SubjectSection {
@@ -71,8 +129,8 @@ export interface MarkRecord {
   rollNumber?: string;
   standard: AllowedStandard | string; // '9' | '10' | '11' | '12'
   division?: string;
-  examType: string; // Fixed: 'એકમ કસોટી – 1'
-  academicYear: string; // Fixed: '૨૦૨૬–૨૭'
+  examType: string; // 'એકમ કસોટી – 1' | 'પ્રથમ પરીક્ષા' | 'દ્વિતીય પરીક્ષા' | 'વાર્ષિક પરીક્ષા'
+  academicYear: string; // e.g. '૨૦૨૬–૨૭'
   subjectId?: string; // e.g. 'gujarati', 'maths'
   subjectName?: string;
   questionMarks?: Record<string, number>; // section/questionId -> marks
@@ -91,3 +149,4 @@ export interface AuthState {
   loading: boolean;
   error: string | null;
 }
+

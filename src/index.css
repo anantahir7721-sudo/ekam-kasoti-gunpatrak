@@ -207,7 +207,7 @@ body {
 }
 
 /* =========================================================================
-   LIGHT THEME OVERRIDES (Comprehensive)
+   LIGHT THEME OVERRIDES (Comprehensive & Bulletproof)
    ========================================================================= */
 html.light body,
 [data-theme="light"] body {
@@ -224,7 +224,7 @@ html.light .app-container,
 /* Headers in light theme */
 html.light header.app-header,
 [data-theme="light"] header.app-header {
-  background-color: rgba(247, 245, 240, 0.95) !important;
+  background-color: rgba(247, 245, 240, 0.96) !important;
   border-color: rgba(169, 159, 145, 0.3) !important;
   color: #141d24 !important;
 }
@@ -233,28 +233,31 @@ html.light .top-strip,
 [data-theme="light"] .top-strip {
   background-color: #ede7df !important;
   border-color: rgba(169, 159, 145, 0.3) !important;
-  color: #635848 !important;
+  color: #5c5243 !important;
 }
 
 /* Light theme card and panel background overrides */
 html.light .glass-panel,
 [data-theme="light"] .glass-panel {
-  background: rgba(255, 255, 255, 0.92) !important;
+  background: #ffffff !important;
   border-color: rgba(169, 159, 145, 0.32) !important;
-  color: #141d24;
+  box-shadow: 0 4px 20px -2px rgba(32, 45, 56, 0.08), 0 2px 6px -1px rgba(32, 45, 56, 0.04) !important;
+  color: #141d24 !important;
 }
 
 html.light .glass-card,
 [data-theme="light"] .glass-card {
-  background: rgba(255, 255, 255, 0.82) !important;
-  border-color: rgba(169, 159, 145, 0.28) !important;
-  color: #141d24;
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(169, 159, 145, 0.3) !important;
+  box-shadow: 0 2px 10px -2px rgba(32, 45, 56, 0.06) !important;
+  color: #141d24 !important;
 }
 
 html.light .glass-card-hover:hover,
 [data-theme="light"] .glass-card-hover:hover {
   background: #ffffff !important;
   border-color: rgba(157, 81, 45, 0.5) !important;
+  box-shadow: 0 10px 24px -4px rgba(32, 45, 56, 0.12) !important;
 }
 
 html.light .glass-pill,
@@ -264,30 +267,48 @@ html.light .glass-pill,
   color: #141d24 !important;
 }
 
+/* Form controls in Light Mode */
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light select,
+html.light textarea,
 html.light .glass-input,
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="light"] select,
+[data-theme="light"] textarea,
 [data-theme="light"] .glass-input {
-  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #141d24 !important;
   border-color: rgba(169, 159, 145, 0.45) !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder,
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: #7b7163 !important;
+}
+
+/* Text overrides in Light Mode */
+html.light .text-\[\#e4ded6\],
+[data-theme="light"] .text-\[\#e4ded6\] {
   color: #141d24 !important;
 }
 
-html.light .glass-input::placeholder,
-[data-theme="light"] .glass-input::placeholder {
-  color: rgba(99, 88, 72, 0.55) !important;
+/* Terracotta crisp accent replacement in Light Mode instead of pale peach */
+html.light .text-\[\#f59c73\],
+[data-theme="light"] .text-\[\#f59c73\] {
+  color: #9d512d !important;
 }
 
-/* Text overrides in Light Mode - ensure crisp, bold readability */
-html.light .text-white:not(.btn-terracotta):not([class*="btn-"]):not([class*="bg-[#9d512d]"]):not([class*="bg-red-"]):not([class*="bg-rose-"]):not([class*="bg-emerald-"]):not([class*="bg-blue-"]),
-[data-theme="light"] .text-white:not(.btn-terracotta):not([class*="btn-"]):not([class*="bg-[#9d512d]"]):not([class*="bg-red-"]):not([class*="bg-rose-"]):not([class*="bg-emerald-"]):not([class*="bg-blue-"]) {
-  color: #141d24 !important;
+html.light .text-\[\#a99f91\],
+[data-theme="light"] .text-\[\#a99f91\] {
+  color: #5c5243 !important;
 }
 
 html.light .text-slate-100,
 html.light .text-slate-200,
-html.light .text-\[\#e4ded6\]:not(.btn-terracotta):not([class*="btn-"]):not([class*="bg-[#9d512d]"]),
 [data-theme="light"] .text-slate-100,
-[data-theme="light"] .text-slate-200,
-[data-theme="light"] .text-\[\#e4ded6\]:not(.btn-terracotta):not([class*="btn-"]):not([class*="bg-[#9d512d]"]) {
+[data-theme="light"] .text-slate-200 {
   color: #141d24 !important;
 }
 
@@ -297,15 +318,13 @@ html.light .text-slate-300,
 }
 
 html.light .text-slate-400,
-html.light .text-\[\#a99f91\],
-[data-theme="light"] .text-slate-400,
-[data-theme="light"] .text-\[\#a99f91\] {
+[data-theme="light"] .text-slate-400 {
   color: #5c5243 !important;
 }
 
 html.light .text-slate-500,
 [data-theme="light"] .text-slate-500 {
-  color: #7b7163 !important;
+  color: #706555 !important;
 }
 
 /* Ensure background containers in light mode adapt */
@@ -329,39 +348,88 @@ html.light .bg-\[\#202d38\],
   background-color: #ede7df !important;
 }
 
+/* Semi-transparent tint adapters in light mode */
+html.light .bg-white\/5,
+[data-theme="light"] .bg-white\/5 {
+  background-color: rgba(32, 45, 56, 0.05) !important;
+}
+
+html.light .bg-white\/10,
+[data-theme="light"] .bg-white\/10 {
+  background-color: rgba(32, 45, 56, 0.09) !important;
+}
+
+html.light .border-white\/5,
 html.light .border-white\/10,
 html.light .border-white\/15,
-html.light .border-white\/5,
+html.light .border-white\/20,
 html.light .border-slate-800,
 html.light .border-slate-700,
+[data-theme="light"] .border-white\/5,
 [data-theme="light"] .border-white\/10,
 [data-theme="light"] .border-white\/15,
-[data-theme="light"] .border-white\/5,
+[data-theme="light"] .border-white\/20,
 [data-theme="light"] .border-slate-800,
 [data-theme="light"] .border-slate-700 {
-  border-color: rgba(169, 159, 145, 0.3) !important;
+  border-color: rgba(169, 159, 145, 0.35) !important;
+}
+
+/* Button & Badge text preservation in Light Mode (CRITICAL FIX) */
+html.light .btn-terracotta,
+html.light .btn-terracotta *,
+html.light .bg-\[\#9d512d\],
+html.light .bg-\[\#9d512d\] *,
+html.light [class*="bg-emerald-600"],
+html.light [class*="bg-emerald-600"] *,
+html.light [class*="bg-blue-600"],
+html.light [class*="bg-blue-600"] *,
+html.light [class*="bg-rose-600"],
+html.light [class*="bg-rose-600"] *,
+html.light [class*="bg-red-600"],
+html.light [class*="bg-red-600"] *,
+[data-theme="light"] .btn-terracotta,
+[data-theme="light"] .btn-terracotta *,
+[data-theme="light"] .bg-\[\#9d512d\],
+[data-theme="light"] .bg-\[\#9d512d\] *,
+[data-theme="light"] [class*="bg-emerald-600"],
+[data-theme="light"] [class*="bg-emerald-600"] *,
+[data-theme="light"] [class*="bg-blue-600"],
+[data-theme="light"] [class*="bg-blue-600"] *,
+[data-theme="light"] [class*="bg-rose-600"],
+[data-theme="light"] [class*="bg-rose-600"] *,
+[data-theme="light"] [class*="bg-red-600"],
+[data-theme="light"] [class*="bg-red-600"] * {
+  color: #ffffff !important;
 }
 
 /* Light mode table styling */
 html.light thead,
 [data-theme="light"] thead {
   background-color: #ede7df !important;
+  border-bottom: 2px solid rgba(169, 159, 145, 0.45) !important;
 }
 
 html.light thead th,
 [data-theme="light"] thead th {
   color: #141d24 !important;
+  font-weight: 700 !important;
   border-color: rgba(169, 159, 145, 0.35) !important;
 }
 
 html.light tbody tr,
 [data-theme="light"] tbody tr {
-  border-color: rgba(169, 159, 145, 0.25) !important;
+  border-color: rgba(169, 159, 145, 0.22) !important;
 }
 
 html.light tbody tr:hover,
 [data-theme="light"] tbody tr:hover {
-  background-color: rgba(169, 159, 145, 0.12) !important;
+  background-color: rgba(157, 81, 45, 0.05) !important;
+}
+
+html.light tbody td,
+[data-theme="light"] tbody td {
+  color: #141d24 !important;
+  border-color: rgba(169, 159, 145, 0.2) !important;
 }
 
 @media print {
