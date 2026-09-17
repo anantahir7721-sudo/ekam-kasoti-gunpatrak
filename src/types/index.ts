@@ -60,6 +60,9 @@ export interface Student {
   aadhaarNo?: string; // Aadhaar / Unique ID (Securely handled)
   studentId?: string; // Student ID
   academicYear?: string;
+  studentStateCode?: string; // Col 61 in UDISE+ / AadhaarUID in CTS
+  cwsnDisability?: string; // Disability details from Col 22, 23-25
+  medium?: string; // Medium of instruction from Col 43
 }
 
 export interface Staff {

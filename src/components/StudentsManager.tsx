@@ -4,18 +4,33 @@ import {
   addStudent,
   updateStudent,
   deleteStudent,
+  bulkDeleteStudents,
+  deleteAllStudents,
   bulkUpsertStudents,
+  fixSchoolStudentsBloodGroups,
 } from '../services/firestoreService';
 import {
   downloadStudentTemplate,
+  downloadCtsTemplate,
+  downloadUdisePlusTemplate,
   parseStudentsExcelFile,
+  parseDualFiles,
   exportStudentsExcel,
   ExcelParseResult,
+  DualFileMergeResult,
+  MergedStudentRow,
   ParsedStudentRow,
 } from '../utils/excelUtils';
 import { printStudentIdCards } from '../utils/idCardPdf';
 import { compressStudentPhoto } from '../utils/imageUtils';
 import { StudentProfileModal } from './StudentProfileModal';
+import {
+  cleanAndNormalizeBloodGroup,
+  diagnoseStudentBloodGroup,
+  isValidBloodGroup,
+  COMMON_BLOOD_GROUPS,
+  BloodGroupDiagnosis,
+} from '../utils/bloodGroupUtils';
 import {
   Users,
   UserPlus,
@@ -121,9 +136,54 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [importStatusMessage, setImportStatusMessage] = useState<string | null>(null);
 
+  // Dual-File (CTS + UDISE+) Import State
+  const [isDualImportModalOpen, setIsDualImportModalOpen] = useState(false);
+  const [ctsFile, setCtsFile] = useState<File | null>(null);
+  const [udiseFile, setUdiseFile] = useState<File | null>(null);
+  const [dualParseResult, setDualParseResult] = useState<DualFileMergeResult | null>(null);
+  const [isParsingDual, setIsParsingDual] = useState(false);
+  const [dualFilterTab, setDualFilterTab] = useState<'all' | 'matched' | 'cts_only' | 'invalid' | 'updates'>('all');
+  const [isExecutingDualImport, setIsExecutingDualImport] = useState(false);
+  const ctsInputRef = useRef<HTMLInputElement>(null);
+  const udiseInputRef = useRef<HTMLInputElement>(null);
+
   // ID Card Generation Modal State
   const [isIdCardModalOpen, setIsIdCardModalOpen] = useState(false);
   const [idCardStdSelection, setIdCardStdSelection] = useState<string>('ALL');
+
+  // Delete All / Bulk Delete Modal State
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+  const [deleteAllScope, setDeleteAllScope] = useState<'all' | 'filtered' | 'selected'>('all');
+  const [deleteAllConfirmInput, setDeleteAllConfirmInput] = useState('');
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+
+  // Blood Group Fix Modal & State
+  const [isFixBloodModalOpen, setIsFixBloodModalOpen] = useState(false);
+  const [isFixingBlood, setIsFixingBlood] = useState(false);
+  const [fixBloodResult, setFixBloodResult] = useState<{
+    totalScanned: number;
+    fixedCount: number;
+    details: Array<{
+      id: string;
+      studentName: string;
+      grNumber?: string;
+      standard: string;
+      oldBloodGroup?: string;
+      newBloodGroup?: string;
+      action: string;
+      description: string;
+    }>;
+  } | null>(null);
+
+  // Compute live list of students having invalid or misplaced blood groups
+  const bloodGroupIssues = useMemo(() => {
+    return students
+      .map((st) => ({ student: st, diagnosis: diagnoseStudentBloodGroup(st) }))
+      .filter(
+        ({ diagnosis }) =>
+          diagnosis.status !== 'valid' && diagnosis.status !== 'empty'
+      );
+  }, [students]);
 
   // Derive unique sections for filtering
   const availableSections = useMemo(() => {
@@ -178,8 +238,9 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
         selectedSectionFilter === 'ALL' || normSec === selectedSectionFilter;
       const matchesGender =
         selectedGenderFilter === 'ALL' || s.gender === selectedGenderFilter;
+      const studentBlood = cleanAndNormalizeBloodGroup(s.bloodGroup) || '';
       const matchesBlood =
-        selectedBloodFilter === 'ALL' || s.bloodGroup === selectedBloodFilter;
+        selectedBloodFilter === 'ALL' || studentBlood === selectedBloodFilter;
 
       if (!matchesStandard || !matchesSection || !matchesGender || !matchesBlood) {
         return false;
@@ -378,6 +439,68 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
     }
   };
 
+  // Determine students target list for Delete All / Bulk Delete
+  const targetDeleteStudents = useMemo(() => {
+    if (deleteAllScope === 'selected') {
+      return students.filter((s) => selectedStudentIds.has(s.id));
+    }
+    if (deleteAllScope === 'filtered') {
+      return filteredStudents;
+    }
+    return students;
+  }, [deleteAllScope, students, filteredStudents, selectedStudentIds]);
+
+  // Handle Execute Delete All / Bulk Delete
+  const handleExecuteDeleteAll = async () => {
+    if (targetDeleteStudents.length === 0) return;
+    if (deleteAllConfirmInput.trim().toUpperCase() !== 'DELETE') {
+      alert('કૃપા કરીને પુષ્ટિ માટે બોક્સમાં "DELETE" લખો.');
+      return;
+    }
+
+    setIsDeletingAll(true);
+    try {
+      let count = 0;
+      if (deleteAllScope === 'all' && targetDeleteStudents.length === students.length) {
+        count = await deleteAllStudents(schoolId);
+      } else {
+        const ids = targetDeleteStudents.map((s) => s.id);
+        count = await bulkDeleteStudents(schoolId, ids);
+      }
+
+      setImportStatusMessage(`સફળતાપૂર્વક ${count} વિદ્યાર્થીઓ ડેટાબેઝમાંથી કાઢી નાખવામાં આવ્યા.`);
+      setSelectedStudentIds(new Set());
+      setIsDeleteAllModalOpen(false);
+      setDeleteAllConfirmInput('');
+      onRefresh();
+      setTimeout(() => setImportStatusMessage(null), 8000);
+    } catch (err: any) {
+      alert(err.message || 'વિદ્યાર્થીઓ કાઢી નાખવામાં ભૂલ આવી.');
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
+  // Handle Fix All Blood Groups (Entries Fix All)
+  const handleFixAllBloodGroups = async () => {
+    try {
+      setIsFixingBlood(true);
+      const res = await fixSchoolStudentsBloodGroups(schoolId, students);
+      setFixBloodResult(res);
+      onRefresh();
+      setImportStatusMessage(
+        res.fixedCount > 0
+          ? `સફળતાપૂર્વક ${res.fixedCount} વિદ્યાર્થીઓના બ્લડ ગ્રૂપ ડેટા ફિક્સ કરવામાં આવ્યા!`
+          : `તમામ વિદ્યાર્થીઓના બ્લડ ગ્રૂપ પહેલેથી જ માન્ય છે (કોઈ સુધારાની જરૂર નથી).`
+      );
+      setTimeout(() => setImportStatusMessage(null), 8000);
+    } catch (err: any) {
+      alert(`બ્લડ ગ્રૂપ ફિક્સ કરવામાં ભૂલ આવી: ${err.message || 'અજ્ઞાત ભૂલ'}`);
+    } finally {
+      setIsFixingBlood(false);
+    }
+  };
+
   // Handle Excel File Selected
   const handleExcelFileSelected = async (file: File) => {
     try {
@@ -438,6 +561,74 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
     }
   };
 
+  // Process Dual Files (CTS + UDISE+)
+  const handleProcessDualFiles = async () => {
+    if (!ctsFile) {
+      alert('કૃપા કરીને પ્રથમ CTS Excel ફાઇલ પસંદ કરો.');
+      return;
+    }
+    if (!udiseFile) {
+      alert('કૃપા કરીને UDISE+ Excel ફાઇલ પસંદ કરો.');
+      return;
+    }
+
+    setIsParsingDual(true);
+    try {
+      const res = await parseDualFiles(ctsFile, udiseFile, students, school.diseCode);
+      setDualParseResult(res);
+    } catch (err: any) {
+      alert(err.message || 'ફાઇલો મર્જ કરવામાં ભૂલ આવી.');
+    } finally {
+      setIsParsingDual(false);
+    }
+  };
+
+  // Execute Dual Import
+  const handleExecuteDualImport = async () => {
+    if (!dualParseResult || dualParseResult.validRows.length === 0) return;
+
+    setIsExecutingDualImport(true);
+    try {
+      const studentsToImport = dualParseResult.validRows.map((r) => ({
+        studentName: r.name, // priority: UDISE+ student name
+        standard: r.standard,
+        diseCode: r.diseCode,
+        studentStateCode: r.studentStateCode,
+        grNumber: r.grNumber, // from CTS
+        section: r.section,
+        division: r.section,
+        rollNumber: r.rollNumber,
+        dob: r.dob,
+        doa: r.doa,
+        gender: r.gender,
+        caste: r.caste,
+        bloodGroup: r.bloodGroup,
+        contactNumber: r.contactNumber,
+        mobileNumber: r.contactNumber,
+        medium: r.medium,
+        cwsnDisability: r.cwsnDisability,
+        fatherName: r.fatherName,
+        motherName: r.motherName,
+      }));
+
+      const res = await bulkUpsertStudents(schoolId, studentsToImport, students);
+
+      setImportStatusMessage(
+        `દ્વિ-ફાઇલ (CTS + UDISE+) આયાત સફળ! ${res.added} નવા વિદ્યાર્થીઓ ઉમેરાયા અને ${res.updated} વિદ્યાર્થીઓના રેકોર્ડ્સ અપડેટ થયા.`
+      );
+      setIsDualImportModalOpen(false);
+      setCtsFile(null);
+      setUdiseFile(null);
+      setDualParseResult(null);
+      onRefresh();
+      setTimeout(() => setImportStatusMessage(null), 8000);
+    } catch (err: any) {
+      alert(err.message || 'વિદ્યાર્થીઓ આયાત કરવામાં ભૂલ આવી.');
+    } finally {
+      setIsExecutingDualImport(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header Card */}
@@ -464,6 +655,45 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Dual-File Smart Import Button (CTS + UDISE+) */}
+            <button
+              onClick={() => setIsDualImportModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-emerald-900/30 transition-all min-h-[44px] border border-emerald-400/40 cursor-pointer animate-pulse-slow"
+              title="CTS અને UDISE+ એક્સેલ ફાઇલો મર્જ કરીને આયાત કરો"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>દ્વિ-ફાઇલ સ્માર્ટ આયાત (CTS + UDISE+)</span>
+            </button>
+
+            {/* Template Downloads Menu / Buttons */}
+            <div className="flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80">
+              <span className="text-[11px] font-semibold text-slate-400 px-2 flex items-center gap-1">
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                ટેમ્પ્લેટ:
+              </span>
+              <button
+                onClick={() => downloadCtsTemplate(school.diseCode, school.schoolName)}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-lg text-xs font-semibold transition-colors border border-emerald-700/40"
+                title="CTS Excel Template (GR No. & AadhaarUID)"
+              >
+                CTS
+              </button>
+              <button
+                onClick={() => downloadUdisePlusTemplate(school.diseCode, school.schoolName)}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg text-xs font-semibold transition-colors border border-cyan-700/40"
+                title="UDISE+ Excel Template (Col 1 to 61)"
+              >
+                UDISE+
+              </button>
+              <button
+                onClick={() => downloadStudentTemplate(school.diseCode, school.schoolName)}
+                className="px-2 py-1.5 hover:bg-slate-800 text-slate-300 rounded-lg text-xs transition-colors"
+                title="General Student Master Template"
+              >
+                સામાન્ય
+              </button>
+            </div>
+
             {/* Generate ID Cards Button */}
             <button
               onClick={() => setIsIdCardModalOpen(true)}
@@ -471,37 +701,27 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
               title="Generate Student ID Cards"
             >
               <CreditCard className="w-4 h-4" />
-              <span>આઈડી કાર્ડ પ્રિન્ટ ({selectedStudentIds.size > 0 ? selectedStudentIds.size : 'બધા'})</span>
-            </button>
-
-            {/* Download Excel Template */}
-            <button
-              onClick={() => downloadStudentTemplate(school.diseCode, school.schoolName)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition-colors shadow-sm min-h-[44px]"
-              title="Download Student Master Excel Template"
-            >
-              <Download className="w-4 h-4 text-emerald-400" />
-              <span>Excel ટેમ્પ્લેટ</span>
+              <span>આઈડી કાર્ડ ({selectedStudentIds.size > 0 ? selectedStudentIds.size : 'બધા'})</span>
             </button>
 
             {/* Export to Excel */}
             <button
               onClick={() => exportStudentsExcel(students, school.schoolName, school.diseCode)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition-colors shadow-sm min-h-[44px]"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition-colors shadow-sm min-h-[44px]"
               title="Export all students to Excel"
             >
               <FileSpreadsheet className="w-4 h-4 text-amber-400" />
-              <span>ડેટા એક્સપોર્ટ</span>
+              <span>એક્સપોર્ટ</span>
             </button>
 
-            {/* Upload Excel */}
-            <label className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-sm cursor-pointer min-h-[44px]">
+            {/* Single File Upload Excel */}
+            <label className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition-colors shadow-sm cursor-pointer min-h-[44px]">
               {isParsingExcel ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Upload className="w-4 h-4" />
+                <Upload className="w-4 h-4 text-emerald-400" />
               )}
-              <span>Excel આયાત</span>
+              <span>એક ફાઇલ આયાત</span>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -516,13 +736,63 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
               />
             </label>
 
+            {/* Delete All Students Button */}
+            <button
+              onClick={() => {
+                if (selectedStudentIds.size > 0) {
+                  setDeleteAllScope('selected');
+                } else if (
+                  selectedStandardFilter !== 'ALL' ||
+                  selectedSectionFilter !== 'ALL' ||
+                  selectedGenderFilter !== 'ALL' ||
+                  selectedBloodFilter !== 'ALL' ||
+                  searchQuery.trim()
+                ) {
+                  setDeleteAllScope('filtered');
+                } else {
+                  setDeleteAllScope('all');
+                }
+                setDeleteAllConfirmInput('');
+                setIsDeleteAllModalOpen(true);
+              }}
+              disabled={students.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-800/60 hover:border-red-700 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed min-h-[44px]"
+              title="બધા અથવા ફિલ્ટર કરેલા વિદ્યાર્થીઓ કાઢી નાખો (Delete All / Bulk Delete)"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+              <span>બધા કાઢી નાખો</span>
+            </button>
+
+            {/* Fix All Blood Groups Button */}
+            <button
+              onClick={() => {
+                setFixBloodResult(null);
+                setIsFixBloodModalOpen(true);
+              }}
+              disabled={students.length === 0}
+              className={`inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed min-h-[44px] ${
+                bloodGroupIssues.length > 0
+                  ? 'bg-amber-950/80 hover:bg-amber-900 text-amber-200 border border-amber-500/80 ring-2 ring-amber-500/30'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700'
+              }`}
+              title="બ્લડ ગ્રૂપની અયોગ્ય એન્ટ્રીઓ સુધારો (Fix Blood Group Column Entries)"
+            >
+              <Heart className={`w-4 h-4 ${bloodGroupIssues.length > 0 ? 'text-amber-400 fill-amber-400' : 'text-red-400'}`} />
+              <span>બ્લડ ગ્રૂપ ફિક્સ</span>
+              {bloodGroupIssues.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black">
+                  {bloodGroupIssues.length}
+                </span>
+              )}
+            </button>
+
             {/* Add Student Button */}
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-terracotta hover:bg-terracotta-hover text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-terracotta/20 transition-all min-h-[44px]"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-terracotta hover:bg-terracotta-hover text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-terracotta/20 transition-all min-h-[44px]"
             >
               <UserPlus className="w-4 h-4" />
-              <span>નવો વિદ્યાર્થી ઉમેરો</span>
+              <span>નવો ઉમેરો</span>
             </button>
           </div>
         </div>
@@ -537,6 +807,33 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
               className="text-emerald-400 hover:text-white p-1"
             >
               <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Blood Group Issues Alert Banner */}
+        {bloodGroupIssues.length > 0 && (
+          <div className="mt-4 bg-amber-950/70 border border-amber-600/80 text-amber-200 rounded-xl p-3.5 text-xs sm:text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <div>
+                <span className="font-bold">
+                  {bloodGroupIssues.length} વિદ્યાર્થીઓના બ્લડ ગ્રૂપમાં અયોગ્ય અથવા આડાઅવળી એન્ટ્રી છે!
+                </span>
+                <span className="text-amber-300/80 block sm:inline sm:ml-1.5 text-xs">
+                  (બ્લડ ગ્રૂપ કોલમમાં માત્ર માન્ય બ્લડ ગ્રૂપ જ લખાવું જોઈએ. ગુજરાતી/માધ્યમનો ડેટા સાચા ખાનામાં જશે.)
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setFixBloodResult(null);
+                setIsFixBloodModalOpen(true);
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-colors shrink-0 shadow flex items-center gap-1.5 cursor-pointer"
+            >
+              <Heart className="w-3.5 h-3.5 fill-slate-950" />
+              <span>બધા ફિક્સ કરો (Fix All)</span>
             </button>
           </div>
         )}
@@ -685,6 +982,19 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
               </button>
 
               <button
+                onClick={() => {
+                  setDeleteAllScope('selected');
+                  setDeleteAllConfirmInput('');
+                  setIsDeleteAllModalOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-red-950 hover:bg-red-900 text-red-300 border border-red-800 font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                title="પસંદ કરેલા વિદ્યાર્થીઓ કાઢી નાખો"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                <span>પસંદ કરેલા કાઢી નાખો ({selectedStudentIds.size})</span>
+              </button>
+
+              <button
                 onClick={() => setSelectedStudentIds(new Set())}
                 className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
               >
@@ -824,7 +1134,26 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
 
                       {/* Roll Number */}
                       <td className="px-4 py-3 font-mono text-xs text-slate-300">
-                        {st.rollNumber || '-'}
+                        {(() => {
+                          const bgInRoll = cleanAndNormalizeBloodGroup(st.rollNumber);
+                          if (bgInRoll) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFixBloodResult(null);
+                                  setIsFixBloodModalOpen(true);
+                                }}
+                                title="આ રોલ નંબર નથી પણ બ્લડ ગ્રૂપ છે! સાચા ખાનામાં બદલવા માટે 'બધા ફિક્સ કરો' પર ક્લિક કરો."
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-950/70 border border-amber-700/80 text-amber-300 hover:bg-amber-900 cursor-pointer"
+                              >
+                                <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                <span>{bgInRoll}</span>
+                              </button>
+                            );
+                          }
+                          return st.rollNumber || '-';
+                        })()}
                       </td>
 
                       {/* DOB */}
@@ -834,13 +1163,33 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
 
                       {/* Blood Group */}
                       <td className="px-4 py-3">
-                        {st.bloodGroup ? (
-                          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-950/60 border border-red-800/60 text-red-300">
-                            {st.bloodGroup}
-                          </span>
-                        ) : (
-                          '-'
-                        )}
+                        {(() => {
+                          const cleanBg = cleanAndNormalizeBloodGroup(st.bloodGroup);
+                          if (cleanBg) {
+                            return (
+                              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-950/60 border border-red-800/60 text-red-300">
+                                {cleanBg}
+                              </span>
+                            );
+                          }
+                          if (st.bloodGroup && st.bloodGroup.trim()) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFixBloodResult(null);
+                                  setIsFixBloodModalOpen(true);
+                                }}
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 border border-amber-600 text-amber-300 flex items-center gap-1 hover:bg-amber-900 transition-colors"
+                                title={`અયોગ્ય બ્લડ ગ્રૂપ એન્ટ્રી: "${st.bloodGroup}". સુધારવા માટે ક્લિક કરો.`}
+                              >
+                                <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                                <span className="line-clamp-1 max-w-[80px]">{st.bloodGroup}</span>
+                              </button>
+                            );
+                          }
+                          return <span className="text-slate-500 text-xs">-</span>;
+                        })()}
                       </td>
 
                       {/* Contact Mobile */}
@@ -883,7 +1232,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                                 section: st.section || st.division,
                                 rollNumber: st.rollNumber,
                                 dob: st.dob,
-                                bloodGroup: st.bloodGroup,
+                                bloodGroup: cleanAndNormalizeBloodGroup(st.bloodGroup) || '',
                                 contactNumber: st.contactNumber || st.mobileNumber,
                               });
                             }}
@@ -1416,6 +1765,417 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
         </div>
       )}
 
+      {/* MODAL 3.5: DUAL-FILE (CTS + UDISE+) SMART IMPORT MODAL */}
+      {isDualImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+          <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col text-white my-auto animate-fadeIn">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-800 flex items-start justify-between gap-4 bg-gradient-to-r from-emerald-950/50 to-slate-900 rounded-t-2xl">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    સ્માર્ટ ડ્યુઅલ આયાત (CTS + UDISE+)
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono">DISE: {school.diseCode}</span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-white mt-1.5 flex items-center gap-2">
+                  <span>બે એક્સેલ ફાઇલ મર્જ કરી વિદ્યાર્થીઓ આયાત કરો</span>
+                </h3>
+                <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-3xl">
+                  <strong>CTS એક્સેલ</strong> માંથી G.R. નંબર &amp; બાળ આઈડી (AadhaarUID) લેવાશે. 
+                  <strong> UDISE+ એક્સેલ</strong> (કોલમ 61 Student State Code સાથે મેચ કરીને) માંથી વિદ્યાર્થીનું પૂરું નામ 
+                  તથા તમામ શૈક્ષણિક વિગતો (ધોરણ, રોલ નં, જન્મ, પ્રવેશ તારીખ, બ્લડ ગ્રૂપ, દિવ્યાંગતા વગેરે) આપમેળે મર્જ થશે.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setIsDualImportModalOpen(false);
+                  setDualParseResult(null);
+                }}
+                className="p-1.5 rounded-xl bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                title="બંધ કરો"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Template Download Help Bar */}
+            <div className="px-5 py-2.5 bg-slate-950/70 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <span className="text-slate-400 flex items-center gap-1.5">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                નમૂનારૂપ એક્સેલ ફાઇલ ટેમ્પ્લેટ્સ:
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadCtsTemplate(school.diseCode, school.schoolName)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/60 font-medium transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>CTS નમૂનો (GR &amp; AadhaarUID)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadUdisePlusTemplate(school.diseCode, school.schoolName)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-700/60 font-medium transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>UDISE+ નમૂનો (Col 1 to 61)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Two File Upload Cards */}
+            <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-slate-800 bg-slate-900/40">
+              {/* File 1: CTS File */}
+              <div className={`p-4 rounded-xl border transition-all ${
+                ctsFile
+                  ? 'bg-emerald-950/20 border-emerald-500/50'
+                  : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-900/50 text-emerald-300 flex items-center justify-center font-bold text-xs border border-emerald-700/40">
+                      ૧
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">CTS એક્સેલ ફાઇલ</h4>
+                      <p className="text-[11px] text-emerald-400 font-medium">G.R. નંબર અને AadhaarUID (DISE Code)</p>
+                    </div>
+                  </div>
+                  {ctsFile && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      પસંદ કરેલ
+                    </span>
+                  )}
+                </div>
+
+                {ctsFile ? (
+                  <div className="mt-3 p-3 rounded-lg bg-slate-900 border border-emerald-900/50 flex items-center justify-between">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <FileSpreadsheet className="w-5 h-5 text-emerald-400 shrink-0" />
+                      <div className="truncate">
+                        <div className="text-xs font-semibold text-white truncate">{ctsFile.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {(ctsFile.size / 1024).toFixed(1)} KB
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCtsFile(null);
+                        setDualParseResult(null);
+                        if (ctsInputRef.current) ctsInputRef.current.value = '';
+                      }}
+                      className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded bg-red-950/50 border border-red-900/50 ml-2 shrink-0"
+                    >
+                      બદલો
+                    </button>
+                  </div>
+                ) : (
+                  <label className="mt-3 border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-900/50">
+                    <Upload className="w-6 h-6 text-emerald-400 mb-1.5" />
+                    <span className="text-xs font-bold text-white">CTS ફાઇલ પસંદ કરો (.xlsx / .xls)</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">ક્લિક કરો અથવા ફાઇલ ખેંચીને મૂકો</span>
+                    <input
+                      ref={ctsInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) {
+                          setCtsFile(e.target.files[0]);
+                          setDualParseResult(null);
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* File 2: UDISE+ File */}
+              <div className={`p-4 rounded-xl border transition-all ${
+                udiseFile
+                  ? 'bg-cyan-950/20 border-cyan-500/50'
+                  : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-cyan-900/50 text-cyan-300 flex items-center justify-center font-bold text-xs border border-cyan-700/40">
+                      ૨
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">UDISE+ એક્સેલ ફાઇલ</h4>
+                      <p className="text-[11px] text-cyan-400 font-medium">Col 4 પૂરું નામ, Col 61 બાળ આઈડી &amp; વિગતો</p>
+                    </div>
+                  </div>
+                  {udiseFile && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-cyan-400" />
+                      પસંદ કરેલ
+                    </span>
+                  )}
+                </div>
+
+                {udiseFile ? (
+                  <div className="mt-3 p-3 rounded-lg bg-slate-900 border border-cyan-900/50 flex items-center justify-between">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <FileSpreadsheet className="w-5 h-5 text-cyan-400 shrink-0" />
+                      <div className="truncate">
+                        <div className="text-xs font-semibold text-white truncate">{udiseFile.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {(udiseFile.size / 1024).toFixed(1)} KB
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUdiseFile(null);
+                        setDualParseResult(null);
+                        if (udiseInputRef.current) udiseInputRef.current.value = '';
+                      }}
+                      className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded bg-red-950/50 border border-red-900/50 ml-2 shrink-0"
+                    >
+                      બદલો
+                    </button>
+                  </div>
+                ) : (
+                  <label className="mt-3 border-2 border-dashed border-slate-700 hover:border-cyan-500/60 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-900/50">
+                    <Upload className="w-6 h-6 text-cyan-400 mb-1.5" />
+                    <span className="text-xs font-bold text-white">UDISE+ ફાઇલ પસંદ કરો (.xlsx / .xls)</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">ક્લિક કરો અથવા ફાઇલ ખેંચીને મૂકો</span>
+                    <input
+                      ref={udiseInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) {
+                          setUdiseFile(e.target.files[0]);
+                          setDualParseResult(null);
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* Compare & Merge Trigger Bar */}
+            {!dualParseResult && (
+              <div className="p-5 flex flex-col items-center justify-center text-center space-y-3">
+                <p className="text-xs text-slate-400 max-w-lg">
+                  બંને ફાઇલો પસંદ કર્યા બાદ નીચેના બટન પર ક્લિક કરો. સિસ્ટમ બંને ફાઇલોમાંથી બાળ આઈડી (AadhaarUID = Student State Code)
+                  સરખાવીને દરેક વિદ્યાર્થીના G.R. નંબર સાથે UDISE+ નું પૂરું નામ અને વિગતો ઓટો-મર્જ કરશે.
+                </p>
+                <button
+                  type="button"
+                  disabled={!ctsFile || !udiseFile || isParsingDual}
+                  onClick={handleProcessDualFiles}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold text-sm shadow-xl disabled:opacity-40 flex items-center gap-2 cursor-pointer transition-all"
+                >
+                  {isParsingDual ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>ફાઇલો મર્જ થઈ રહી છે...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <span>બંને ફાઇલો મેળવો અને ચકાસો (Compare &amp; Merge)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* If Parsed: Result Metrics and Table */}
+            {dualParseResult && (
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                {/* Stats cards */}
+                <div className="p-4 grid grid-cols-2 sm:grid-cols-6 gap-2 border-b border-slate-800 bg-slate-950/40 text-center">
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2">
+                    <div className="text-white font-bold text-base font-mono">{dualParseResult.totalCtsRows}</div>
+                    <div className="text-slate-400 text-[10px]">CTS વિદ્યાર્થીઓ</div>
+                  </div>
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2">
+                    <div className="text-white font-bold text-base font-mono">{dualParseResult.totalUdiseRows}</div>
+                    <div className="text-slate-400 text-[10px]">UDISE+ રેકોર્ડ્સ</div>
+                  </div>
+                  <div className="bg-emerald-950/60 border border-emerald-800/80 rounded-xl p-2">
+                    <div className="text-emerald-400 font-bold text-base font-mono">{dualParseResult.matchedCount}</div>
+                    <div className="text-emerald-300 text-[10px]">DISE મેચ (બંને ફાઇલ)</div>
+                  </div>
+                  <div className="bg-cyan-950/60 border border-cyan-800/80 rounded-xl p-2">
+                    <div className="text-cyan-400 font-bold text-base font-mono">{dualParseResult.validRows.length}</div>
+                    <div className="text-cyan-300 text-[10px]">આયાત માટે માન્ય</div>
+                  </div>
+                  <div className="bg-blue-950/60 border border-blue-800/80 rounded-xl p-2">
+                    <div className="text-blue-400 font-bold text-base font-mono">{dualParseResult.existingUpdateRows.length}</div>
+                    <div className="text-blue-300 text-[10px]">ડેટાબેઝ અપડેટ</div>
+                  </div>
+                  <div className="bg-red-950/60 border border-red-800/80 rounded-xl p-2">
+                    <div className="text-red-400 font-bold text-base font-mono">{dualParseResult.invalidRows.length}</div>
+                    <div className="text-red-300 text-[10px]">અપૂર્ણ / ક્ષતિ</div>
+                  </div>
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="flex border-b border-slate-800 px-4 pt-2 gap-2 text-xs overflow-x-auto">
+                  {[
+                    { id: 'all', label: `બધા રેકોર્ડ્સ (${dualParseResult.allRows.length})` },
+                    { id: 'matched', label: `મેળવેલ (CTS + UDISE+) (${dualParseResult.matchedCount})` },
+                    { id: 'cts_only', label: `માત્ર CTS (${dualParseResult.ctsOnlyCount})` },
+                    { id: 'updates', label: `અપડેટ થનાર (${dualParseResult.existingUpdateRows.length})` },
+                    { id: 'invalid', label: `ક્ષતિવાળી (${dualParseResult.invalidRows.length})` },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setDualFilterTab(tab.id as any)}
+                      className={`px-3 py-2 border-b-2 font-medium transition-colors whitespace-nowrap ${
+                        dualFilterTab === tab.id
+                          ? 'border-emerald-400 text-emerald-300'
+                          : 'border-transparent text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Merged Table */}
+                <div className="flex-1 overflow-y-auto p-4 max-h-80">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] sticky top-0 z-10">
+                      <tr>
+                        <th className="p-2 w-10">#</th>
+                        <th className="p-2">સ્થિતિ</th>
+                        <th className="p-2">વિદ્યાર્થીનું નામ (UDISE+)</th>
+                        <th className="p-2">G.R. નં (CTS)</th>
+                        <th className="p-2">બાળ આઈડી / DISE</th>
+                        <th className="p-2">ધોરણ-વર્ગ</th>
+                        <th className="p-2">રોલ નં</th>
+                        <th className="p-2">પ્રવેશ તારીખ (DOA)</th>
+                        <th className="p-2">જન્મ તારીખ</th>
+                        <th className="p-2">બ્લડ ગ્રૂપ</th>
+                        <th className="p-2">જાતિ</th>
+                        <th className="p-2">CWSN દિવ્યાંગતા</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {dualParseResult.allRows
+                        .filter((r) => {
+                          if (dualFilterTab === 'matched') return r.matchSource === 'both' && r.isValid;
+                          if (dualFilterTab === 'cts_only') return r.matchSource === 'cts_only' && r.isValid;
+                          if (dualFilterTab === 'updates') return r.isExistingUpdate;
+                          if (dualFilterTab === 'invalid') return !r.isValid;
+                          return true;
+                        })
+                        .map((r) => (
+                          <tr key={r.rowNumber} className="hover:bg-slate-800/40">
+                            <td className="p-2 font-mono text-slate-400">#{r.rowNumber}</td>
+                            <td className="p-2">
+                              {r.isValid ? (
+                                r.isExistingUpdate ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-blue-950 text-blue-300 border border-blue-800">
+                                    અપડેટ થશે
+                                  </span>
+                                ) : r.matchSource === 'both' ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-emerald-950 text-emerald-300 border border-emerald-800 flex items-center gap-1 w-fit">
+                                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                                    મેચ (નવો)
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-amber-950 text-amber-300 border border-amber-800">
+                                    માત્ર CTS
+                                  </span>
+                                )
+                              ) : (
+                                <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-red-950 text-red-300 border border-red-800" title={r.errorReason}>
+                                  {r.errorReason || 'ક્ષતિ'}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2 font-bold text-white max-w-[180px] truncate" title={r.name}>
+                              {r.name || '(નામ નથી)'}
+                            </td>
+                            <td className="p-2 font-mono text-amber-300 font-bold">{r.grNumber || '-'}</td>
+                            <td className="p-2 font-mono text-slate-300 text-[11px]">{r.studentStateCode || r.diseCode || '-'}</td>
+                            <td className="p-2 font-semibold text-emerald-400">
+                              ધો. {r.standard} {r.section ? `(${r.section})` : ''}
+                            </td>
+                            <td className="p-2 font-mono">{r.rollNumber || '-'}</td>
+                            <td className="p-2 text-sky-300 font-medium">{r.doa || '-'}</td>
+                            <td className="p-2 text-slate-300">{r.dob || '-'}</td>
+                            <td className="p-2 text-red-300 font-bold">{r.bloodGroup || '-'}</td>
+                            <td className="p-2 text-slate-300">{r.caste || '-'}</td>
+                            <td className="p-2 text-[11px] text-amber-200">{r.cwsnDisability || '-'}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Bottom Actions */}
+            <div className="p-4 border-t border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60 rounded-b-2xl">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDualImportModalOpen(false);
+                    setDualParseResult(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-colors"
+                >
+                  બંધ કરો
+                </button>
+                {dualParseResult && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDualParseResult(null);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white text-xs transition-colors"
+                  >
+                    ફરીથી ફાઇલ પસંદ કરો
+                  </button>
+                )}
+              </div>
+
+              {dualParseResult && (
+                <button
+                  type="button"
+                  disabled={isExecutingDualImport || dualParseResult.validRows.length === 0}
+                  onClick={handleExecuteDualImport}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold text-xs flex items-center gap-2 disabled:opacity-50 shadow-lg cursor-pointer"
+                >
+                  {isExecutingDualImport ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>ડેટાબેઝમાં સાચવી રહ્યું છે...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-white" />
+                      <span>
+                        આયાત પૂર્ણ કરો ({dualParseResult.validRows.length} માન્ય વિદ્યાર્થીઓ સાચવો)
+                      </span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL 4: QUICK EDIT MODAL */}
       {editingStudent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
@@ -1496,14 +2256,32 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">સંપર્ક / Mobile</label>
-                <input
-                  type="tel"
-                  value={editForm.contactNumber || ''}
-                  onChange={(e) => setEditForm({ ...editForm, contactNumber: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-terracotta font-mono"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">સંપર્ક / Mobile</label>
+                  <input
+                    type="tel"
+                    value={editForm.contactNumber || ''}
+                    onChange={(e) => setEditForm({ ...editForm, contactNumber: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-terracotta font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">બ્લડ ગ્રૂપ (Blood Group)</label>
+                  <select
+                    value={editForm.bloodGroup || ''}
+                    onChange={(e) => setEditForm({ ...editForm, bloodGroup: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-terracotta"
+                  >
+                    <option value="">ખાલી રાખો (-)</option>
+                    {COMMON_BLOOD_GROUPS.map((bg) => (
+                      <option key={bg} value={bg}>
+                        {bg}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
@@ -1558,6 +2336,415 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                 <span>હા, કાઢી નાખો</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5.5: BULK / DELETE ALL CONFIRMATION MODAL */}
+      {isDeleteAllModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+          <div className="bg-slate-900 border border-red-800/80 rounded-2xl shadow-2xl max-w-lg w-full p-5 sm:p-6 text-white my-auto animate-fadeIn">
+            {/* Header */}
+            <div className="flex items-start gap-3.5 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-950/90 border border-red-700/80 text-red-400 flex items-center justify-center shrink-0 shadow-lg">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-950 text-red-300 border border-red-800">
+                    અત્યંત સાવચેતી જરૂરી (Destructive Action)
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (!isDeletingAll) {
+                        setIsDeleteAllModalOpen(false);
+                        setDeleteAllConfirmInput('');
+                      }
+                    }}
+                    className="text-slate-400 hover:text-white p-1"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <h3 className="text-base sm:text-lg font-bold text-white mt-1">
+                  વિદ્યાર્થીઓ કાઢી નાખો (Delete Students)
+                </h3>
+              </div>
+            </div>
+
+            {/* Scope Selection */}
+            <div className="space-y-2 mb-4">
+              <label className="block text-xs font-semibold text-slate-300">
+                કાઢી નાખવાનો વ્યાપ પસંદ કરો (Select Scope):
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteAllScope('all')}
+                  className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between cursor-pointer ${
+                    deleteAllScope === 'all'
+                      ? 'bg-red-950/70 border-red-500 text-white ring-1 ring-red-500'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-bold">શાળાના તમામ</span>
+                  <span className="text-[11px] font-mono mt-1 text-red-400">
+                    {students.length} વિદ્યાર્થીઓ
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDeleteAllScope('filtered')}
+                  className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between cursor-pointer ${
+                    deleteAllScope === 'filtered'
+                      ? 'bg-red-950/70 border-red-500 text-white ring-1 ring-red-500'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-bold">ફિલ્ટર થયેલા</span>
+                  <span className="text-[11px] font-mono mt-1 text-amber-400">
+                    {filteredStudents.length} વિદ્યાર્થીઓ
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={selectedStudentIds.size === 0}
+                  onClick={() => setDeleteAllScope('selected')}
+                  className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between ${
+                    selectedStudentIds.size === 0
+                      ? 'opacity-30 cursor-not-allowed bg-slate-950/40 border-slate-850 text-slate-500'
+                      : deleteAllScope === 'selected'
+                      ? 'bg-red-950/70 border-red-500 text-white ring-1 ring-red-500 cursor-pointer'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 cursor-pointer'
+                  }`}
+                >
+                  <span className="font-bold">પસંદ કરેલા</span>
+                  <span className="text-[11px] font-mono mt-1 text-emerald-400">
+                    {selectedStudentIds.size} વિદ્યાર્થીઓ
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Warning Message Box */}
+            <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-800/80 mb-4 space-y-1.5 text-xs text-red-200">
+              <div className="font-bold text-red-300 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>
+                  કુલ {targetDeleteStudents.length} વિદ્યાર્થીઓ કાયમ માટે ડિલીટ થશે
+                </span>
+              </div>
+              <p className="text-[11px] text-red-300/80 leading-relaxed">
+                આ ક્રિયાથી પસંદ કરેલ તમામ વિદ્યાર્થીઓનો ડેટા (નામ, G.R. નંબર, સરનામું, જન્મ તારીખ, ફોટો વગેરે) Firestore ડેટાબેઝમાંથી સંપૂર્ણપણે કાઢી નાખવામાં આવશે. આ પ્રક્રિયા પાછી વાળી શકાશે નહીં.
+              </p>
+            </div>
+
+            {/* Quick Preview of Students being deleted */}
+            {targetDeleteStudents.length > 0 && (
+              <div className="mb-4">
+                <div className="text-[11px] font-semibold text-slate-400 mb-1.5 flex justify-between">
+                  <span>કાઢી નાખવામાં આવનાર વિદ્યાર્થીઓ (નમૂનો):</span>
+                  <span className="font-mono text-red-400 font-bold">{targetDeleteStudents.length} કુલ</span>
+                </div>
+                <div className="max-h-28 overflow-y-auto p-2.5 bg-slate-950 border border-slate-800 rounded-xl space-y-1 text-xs">
+                  {targetDeleteStudents.slice(0, 8).map((st) => (
+                    <div key={st.id} className="flex items-center justify-between text-slate-300 py-0.5 border-b border-slate-900 last:border-0">
+                      <span className="truncate max-w-[240px] font-medium">{st.studentName}</span>
+                      <span className="font-mono text-[11px] text-slate-400 shrink-0">
+                        ધો. {String(st.standard).replace(/^class\s*/i, '')} {st.grNumber ? `| GR: ${st.grNumber}` : ''}
+                      </span>
+                    </div>
+                  ))}
+                  {targetDeleteStudents.length > 8 && (
+                    <div className="text-[10px] text-slate-400 text-center pt-1 italic">
+                      + બીજા {targetDeleteStudents.length - 8} વિદ્યાર્થીઓ...
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Confirmation input */}
+            <div className="space-y-1.5 mb-5">
+              <label className="block text-xs font-semibold text-slate-300">
+                ચોક્કસ પુષ્ટિ કરવા માટે નીચેના બોક્સમાં <strong className="text-red-400 font-mono">DELETE</strong> લખો:
+              </label>
+              <input
+                type="text"
+                value={deleteAllConfirmInput}
+                onChange={(e) => setDeleteAllConfirmInput(e.target.value)}
+                placeholder='DELETE લખો'
+                disabled={isDeletingAll}
+                className="w-full bg-slate-950 border border-slate-700 focus:border-red-500 rounded-xl px-3 py-2 text-white font-mono text-sm focus:outline-none uppercase placeholder-slate-600"
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                disabled={isDeletingAll}
+                onClick={() => {
+                  setIsDeleteAllModalOpen(false);
+                  setDeleteAllConfirmInput('');
+                }}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
+              >
+                રદ કરો
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  deleteAllConfirmInput.trim().toUpperCase() !== 'DELETE' ||
+                  isDeletingAll ||
+                  targetDeleteStudents.length === 0
+                }
+                onClick={handleExecuteDeleteAll}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-red-950/50 cursor-pointer"
+              >
+                {isDeletingAll ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>ડિલીટ થઈ રહ્યું છે...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>હા, {targetDeleteStudents.length} વિદ્યાર્થીઓ કાઢી નાખો</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: FIX ALL BLOOD GROUPS MODAL */}
+      {isFixBloodModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+          <div className="bg-slate-900 border border-red-800/60 rounded-2xl shadow-2xl max-w-2xl w-full p-5 sm:p-6 text-white my-auto animate-fadeIn">
+            {/* Header */}
+            <div className="flex items-start gap-3.5 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-red-950/90 border border-red-700/80 text-red-400 flex items-center justify-center shrink-0 shadow-lg">
+                <Heart className="w-6 h-6 fill-red-400 text-red-400" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-950 text-red-300 border border-red-800">
+                    ડેટા ક્લીનિંગ અને ઓટોમેશન
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (!isFixingBlood) {
+                        setIsFixBloodModalOpen(false);
+                        setFixBloodResult(null);
+                      }
+                    }}
+                    className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <h3 className="text-base sm:text-lg font-bold text-white mt-1">
+                  બ્લડ ગ્રૂપ એન્ટ્રીઝ ફિક્સ કરો (Fix Blood Group Column Entries)
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  બ્લડ ગ્રૂપ કોલમમાં માત્ર સાચું બ્લડ ગ્રૂપ (A+, B+, O+, AB+ વગેરે) જ હોવું જોઈએ.
+                </p>
+              </div>
+            </div>
+
+            {/* If Fix Complete Result is Available */}
+            {fixBloodResult ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-emerald-950/70 border border-emerald-700/80 text-emerald-200">
+                  <div className="flex items-center gap-2.5 font-bold text-base text-emerald-300">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <span>
+                      {fixBloodResult.fixedCount > 0
+                        ? `સફળતાપૂર્વક ${fixBloodResult.fixedCount} વિદ્યાર્થીઓનો ડેટા ફિક્સ કરવામાં આવ્યો!`
+                        : `તમામ વિદ્યાર્થીઓના બ્લડ ગ્રૂપ પહેલેથી જ સાચા છે.`}
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-300/80 mt-1">
+                    કુલ સ્કેન કરેલ: {fixBloodResult.totalScanned} વિદ્યાર્થીઓ • સુધારેલ એન્ટ્રીઓ: {fixBloodResult.fixedCount}
+                  </p>
+                </div>
+
+                {fixBloodResult.details.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-slate-300 flex justify-between">
+                      <span>સુધારેલા વિદ્યાર્થીઓની યાદી:</span>
+                      <span className="font-mono text-emerald-400 font-bold">{fixBloodResult.details.length} એન્ટ્રીઓ</span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto p-2 bg-slate-950 border border-slate-800 rounded-xl space-y-2 text-xs">
+                      {fixBloodResult.details.map((d) => (
+                        <div
+                          key={d.id}
+                          className="p-2.5 rounded-lg bg-slate-900 border border-slate-800/80 space-y-1"
+                        >
+                          <div className="flex items-center justify-between font-medium text-white">
+                            <span>{d.studentName}</span>
+                            <span className="font-mono text-slate-400 text-[11px]">
+                              ધો. {d.standard} {d.grNumber ? `| GR: ${d.grNumber}` : ''}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="text-red-400 font-mono line-through bg-red-950/60 px-1.5 py-0.5 rounded border border-red-900/60">
+                              {d.oldBloodGroup || '(ખાલી)'}
+                            </span>
+                            <span className="text-slate-400">➔</span>
+                            <span className="text-emerald-400 font-mono font-bold bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-900/60">
+                              {d.newBloodGroup || '(બ્લડ ગ્રૂપ સાફ કર્યું)'}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 italic">{d.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-3 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsFixBloodModalOpen(false);
+                      setFixBloodResult(null);
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-terracotta hover:bg-terracotta-hover text-white text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    પૂર્ણ થયું (Done)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Pre-Fix Diagnosis and Action */
+              <div className="space-y-4">
+                {/* Stats row */}
+                <div className="grid grid-cols-3 gap-2.5 text-center text-xs">
+                  <div className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-xl">
+                    <div className="font-mono text-base font-bold text-white">{students.length}</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">કુલ વિદ્યાર્થીઓ</div>
+                  </div>
+                  <div className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-xl">
+                    <div className="font-mono text-base font-bold text-emerald-400">
+                      {students.filter((s) => isValidBloodGroup(s.bloodGroup)).length}
+                    </div>
+                    <div className="text-[11px] text-emerald-300 mt-0.5">માન્ય બ્લડ ગ્રૂપ</div>
+                  </div>
+                  <div className={`p-2.5 rounded-xl border ${
+                    bloodGroupIssues.length > 0
+                      ? 'bg-amber-950/60 border-amber-600/80 text-amber-200'
+                      : 'bg-slate-950/80 border-slate-800 text-slate-400'
+                  }`}>
+                    <div className="font-mono text-base font-bold text-amber-400">
+                      {bloodGroupIssues.length}
+                    </div>
+                    <div className="text-[11px] mt-0.5">સુધારવા યોગ્ય એન્ટ્રીઓ</div>
+                  </div>
+                </div>
+
+                {/* Explanation rule */}
+                <div className="p-3 bg-slate-800/50 border border-white/5 rounded-xl text-xs space-y-1 text-slate-300">
+                  <div className="font-bold text-white flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>આ ટૂલ શું સુધારશે?</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300/90 pl-1">
+                    <li>
+                      <strong>ખોટો ડેટા દૂર કરશે:</strong> બ્લડ ગ્રૂપ ખાનામાં લખાયેલ 'Gujarati', 'ગુજરાતી' કે અન્ય માધ્યમનો ડેટા શોધીને તેને આપમેળે સાચા માધ્યમ (Medium) ખાનામાં સેવ કરશે અને બ્લડ ગ્રૂપ ખાલી કરશે.
+                    </li>
+                    <li>
+                      <strong>ફોર્મેટ સ્ટાન્ડર્ડાઈઝેશન:</strong> 'o+', 'b +', 'A POSITIVE' જેવી એન્ટ્રીઓને સાચા ફોર્મેટ ('O+', 'B+', 'A+') માં ફેરવશે.
+                    </li>
+                    <li>
+                      <strong>ડેટાબેઝ સેવિંગ:</strong> બધા સુધારા એક જ ક્લિકમાં Firestore ડેટાબેઝમાં કાયમી સાચવી દેવામાં આવશે.
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Issues List or All Clean Message */}
+                {bloodGroupIssues.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-amber-300">
+                        સુધારવા માટે મળેલ વિદ્યાર્થીઓ ({bloodGroupIssues.length}):
+                      </span>
+                    </div>
+
+                    <div className="max-h-52 overflow-y-auto p-2 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5 text-xs">
+                      {bloodGroupIssues.map(({ student, diagnosis }) => (
+                        <div
+                          key={student.id}
+                          className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between gap-2"
+                        >
+                          <div className="truncate max-w-[200px] sm:max-w-[260px]">
+                            <div className="font-medium text-white truncate">{student.studentName}</div>
+                            <div className="text-[10px] text-slate-400">
+                              ધો. {String(student.standard).replace(/^class\s*/i, '')} {student.grNumber ? `| GR: ${student.grNumber}` : ''}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-red-950/80 border border-red-800 text-red-300">
+                              {student.bloodGroup || '(ખાલી)'}
+                            </span>
+                            <span className="text-slate-500 text-xs">➔</span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950/80 border border-emerald-800 text-emerald-300">
+                              {diagnosis.newBloodGroup || '(દૂર થશે)'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>શાળાના તમામ વિદ્યાર્થીઓનું બ્લડ ગ્રૂપ યોગ્ય છે! કોઈ અયોગ્ય એન્ટ્રી નથી.</span>
+                  </div>
+                )}
+
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                  <button
+                    type="button"
+                    disabled={isFixingBlood}
+                    onClick={() => setIsFixBloodModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    રદ કરો
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isFixingBlood || students.length === 0}
+                    onClick={handleFixAllBloodGroups}
+                    className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-red-950/50 cursor-pointer"
+                  >
+                    {isFixingBlood ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>ફિક્સ થઈ રહ્યું છે...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Heart className="w-4 h-4 fill-white" />
+                        <span>
+                          {bloodGroupIssues.length > 0
+                            ? `બધા ફિક્સ કરો (Fix All ${bloodGroupIssues.length} Entries)`
+                            : `બધા ફરી ચકાસો (Re-check & Fix All)`}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

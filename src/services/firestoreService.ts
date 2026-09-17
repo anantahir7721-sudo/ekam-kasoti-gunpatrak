@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { Student, MarkRecord } from '../types';
+import { cleanAndNormalizeBloodGroup, diagnoseStudentBloodGroup } from '../utils/bloodGroupUtils';
 
 /**
  * Fetch all students belonging strictly to the specified school.
@@ -87,7 +88,9 @@ export async function addStudent(
     ...(data.motherName ? { motherName: data.motherName.trim() } : {}),
     ...(data.fatherName ? { fatherName: data.fatherName.trim() } : {}),
     ...(data.caste ? { caste: data.caste.trim() } : {}),
-    ...(data.bloodGroup ? { bloodGroup: data.bloodGroup.trim() } : {}),
+    ...(data.bloodGroup && cleanAndNormalizeBloodGroup(data.bloodGroup)
+      ? { bloodGroup: cleanAndNormalizeBloodGroup(data.bloodGroup) }
+      : {}),
     ...(data.contactNumber ? { contactNumber: data.contactNumber.trim(), mobileNumber: data.contactNumber.trim() } : {}),
     ...(data.mobileNumber && !data.contactNumber ? { contactNumber: data.mobileNumber.trim(), mobileNumber: data.mobileNumber.trim() } : {}),
     ...(data.fatherOccupation ? { fatherOccupation: data.fatherOccupation.trim() } : {}),
@@ -141,7 +144,9 @@ export async function bulkAddStudents(
         ...(item.motherName ? { motherName: item.motherName.trim() } : {}),
         ...(item.fatherName ? { fatherName: item.fatherName.trim() } : {}),
         ...(item.caste ? { caste: item.caste.trim() } : {}),
-        ...(item.bloodGroup ? { bloodGroup: item.bloodGroup.trim() } : {}),
+        ...(item.bloodGroup && cleanAndNormalizeBloodGroup(item.bloodGroup)
+          ? { bloodGroup: cleanAndNormalizeBloodGroup(item.bloodGroup) }
+          : {}),
         ...(item.contactNumber ? { contactNumber: item.contactNumber.trim(), mobileNumber: item.contactNumber.trim() } : {}),
         ...(item.mobileNumber && !item.contactNumber ? { contactNumber: item.mobileNumber.trim(), mobileNumber: item.mobileNumber.trim() } : {}),
         ...(item.fatherOccupation ? { fatherOccupation: item.fatherOccupation.trim() } : {}),
@@ -230,7 +235,10 @@ export async function bulkUpsertStudents(
         if (item.motherName !== undefined) updateData.motherName = item.motherName.trim();
         if (item.fatherName !== undefined) updateData.fatherName = item.fatherName.trim();
         if (item.caste !== undefined) updateData.caste = item.caste.trim();
-        if (item.bloodGroup !== undefined) updateData.bloodGroup = item.bloodGroup.trim();
+        if (item.bloodGroup !== undefined) {
+          const cleanB = cleanAndNormalizeBloodGroup(item.bloodGroup);
+          updateData.bloodGroup = cleanB || '';
+        }
         if (item.contactNumber !== undefined) {
           updateData.contactNumber = item.contactNumber.trim();
           updateData.mobileNumber = item.contactNumber.trim();
@@ -240,6 +248,9 @@ export async function bulkUpsertStudents(
         if (item.placeOfBirth !== undefined) updateData.placeOfBirth = item.placeOfBirth.trim();
         if (item.aadhaarNo !== undefined) updateData.aadhaarNo = item.aadhaarNo.trim();
         if (item.photoUrl !== undefined) updateData.photoUrl = item.photoUrl.trim();
+        if (item.studentStateCode !== undefined) updateData.studentStateCode = item.studentStateCode.trim();
+        if (item.cwsnDisability !== undefined) updateData.cwsnDisability = item.cwsnDisability.trim();
+        if (item.medium !== undefined) updateData.medium = item.medium.trim();
 
         batch.set(docRef, updateData, { merge: true });
         updatedCount++;
@@ -252,6 +263,9 @@ export async function bulkUpsertStudents(
           standard: cleanStd,
           createdAt: new Date().toISOString(),
           ...(item.diseCode ? { diseCode: item.diseCode.trim() } : {}),
+          ...(item.studentStateCode ? { studentStateCode: item.studentStateCode.trim() } : {}),
+          ...(item.cwsnDisability ? { cwsnDisability: item.cwsnDisability.trim() } : {}),
+          ...(item.medium ? { medium: item.medium.trim() } : {}),
           ...(item.grNumber ? { grNumber: item.grNumber.trim() } : {}),
           ...(item.section ? { section: item.section.trim(), division: item.section.trim() } : {}),
           ...(item.division && !item.section ? { section: item.division.trim(), division: item.division.trim() } : {}),
@@ -263,7 +277,9 @@ export async function bulkUpsertStudents(
           ...(item.motherName ? { motherName: item.motherName.trim() } : {}),
           ...(item.fatherName ? { fatherName: item.fatherName.trim() } : {}),
           ...(item.caste ? { caste: item.caste.trim() } : {}),
-          ...(item.bloodGroup ? { bloodGroup: item.bloodGroup.trim() } : {}),
+          ...(item.bloodGroup && cleanAndNormalizeBloodGroup(item.bloodGroup)
+            ? { bloodGroup: cleanAndNormalizeBloodGroup(item.bloodGroup) }
+            : {}),
           ...(item.contactNumber ? { contactNumber: item.contactNumber.trim(), mobileNumber: item.contactNumber.trim() } : {}),
           ...(item.mobileNumber && !item.contactNumber ? { contactNumber: item.mobileNumber.trim(), mobileNumber: item.mobileNumber.trim() } : {}),
           ...(item.fatherOccupation ? { fatherOccupation: item.fatherOccupation.trim() } : {}),
@@ -292,10 +308,14 @@ export async function updateStudent(
   data: Partial<Omit<Student, 'id' | 'schoolId' | 'createdAt'>>
 ): Promise<void> {
   const studentDocRef = doc(db, 'schools', schoolId, 'students', studentId);
-  await updateDoc(studentDocRef, {
+  const updateData: Record<string, any> = {
     ...data,
     updatedAt: new Date().toISOString(),
-  });
+  };
+  if (data.bloodGroup !== undefined) {
+    updateData.bloodGroup = cleanAndNormalizeBloodGroup(data.bloodGroup) || '';
+  }
+  await updateDoc(studentDocRef, updateData);
 }
 
 /**
@@ -304,6 +324,41 @@ export async function updateStudent(
 export async function deleteStudent(schoolId: string, studentId: string): Promise<void> {
   const studentDocRef = doc(db, 'schools', schoolId, 'students', studentId);
   await deleteDoc(studentDocRef);
+}
+
+/**
+ * Bulk delete multiple students by IDs in chunks of 400
+ */
+export async function bulkDeleteStudents(schoolId: string, studentIds: string[]): Promise<number> {
+  if (!studentIds || studentIds.length === 0) return 0;
+
+  const chunkSize = 400;
+  let deletedCount = 0;
+
+  for (let i = 0; i < studentIds.length; i += chunkSize) {
+    const chunk = studentIds.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+
+    for (const id of chunk) {
+      const studentDocRef = doc(db, 'schools', schoolId, 'students', id);
+      batch.delete(studentDocRef);
+    }
+
+    await batch.commit();
+    deletedCount += chunk.length;
+  }
+
+  return deletedCount;
+}
+
+/**
+ * Delete ALL student records belonging to this school
+ */
+export async function deleteAllStudents(schoolId: string): Promise<number> {
+  const studentsCol = collection(db, 'schools', schoolId, 'students');
+  const snapshot = await getDocs(studentsCol);
+  const ids = snapshot.docs.map((docSnap) => docSnap.id);
+  return bulkDeleteStudents(schoolId, ids);
 }
 
 /**
@@ -598,5 +653,126 @@ export async function updateSchoolProfile(
   delete cleanData.diseCode;
 
   await updateDoc(schoolRef, cleanData);
+}
+
+/**
+ * Scans all students of a school and automatically fixes any corrupted or misplaced blood group entries.
+ * - Non-blood values (e.g. 'Gujarati', 'General', 'Yes', 'No') are cleared from bloodGroup and moved to medium/caste if applicable.
+ * - Non-standard blood group entries (e.g. 'b+', 'B +ve', '1', 'o positive') are normalized to canonical forms ('B+', 'O+').
+ * - Misplaced blood groups in other fields (e.g., caste or medium holding a valid blood group) are recovered.
+ * Writes batch updates to Firestore in chunks of 400.
+ */
+export async function fixSchoolStudentsBloodGroups(
+  schoolId: string,
+  students: Student[]
+): Promise<{
+  totalScanned: number;
+  fixedCount: number;
+  details: Array<{
+    id: string;
+    studentName: string;
+    grNumber?: string;
+    standard: string;
+    oldBloodGroup?: string;
+    newBloodGroup?: string;
+    action: string;
+    description: string;
+  }>;
+}> {
+  const details: Array<{
+    id: string;
+    studentName: string;
+    grNumber?: string;
+    standard: string;
+    oldBloodGroup?: string;
+    newBloodGroup?: string;
+    action: string;
+    description: string;
+  }> = [];
+
+  const studentsToUpdate: Array<{
+    id: string;
+    updateData: Record<string, any>;
+    detail: any;
+  }> = [];
+
+  for (const st of students) {
+    const diag = diagnoseStudentBloodGroup(st);
+
+    if (diag.status === 'valid' || diag.status === 'empty') {
+      continue; // Clean entry, no action required
+    }
+
+    const updateData: Record<string, any> = {
+      updatedAt: new Date().toISOString(),
+    };
+
+    let action = '';
+    if (diag.status === 'normalized') {
+      updateData.bloodGroup = diag.newBloodGroup || '';
+      action = `પ્રમાણિત કર્યું (${diag.oldBloodGroup} -> ${diag.newBloodGroup})`;
+    } else if (diag.status === 'invalid_cleared') {
+      updateData.bloodGroup = '';
+      action = `અયોગ્ય એન્ટ્રી "${diag.oldBloodGroup}" દૂર કરી`;
+      if (diag.migratedToField === 'medium' && (!st.medium || st.medium === '')) {
+        updateData.medium = diag.migratedValue;
+        action += ` (માધ્યમ: ${diag.migratedValue} માં ખસેડાયું)`;
+      } else if (diag.migratedToField === 'caste' && (!st.caste || st.caste === '')) {
+        updateData.caste = diag.migratedValue;
+        action += ` (જ્ઞાતિ: ${diag.migratedValue} માં ખસેડાયું)`;
+      }
+    } else if (diag.status === 'misplaced_recovered') {
+      updateData.bloodGroup = diag.newBloodGroup || '';
+      action = `${diag.recoveredFromField} માંથી બ્લડ ગ્રૂપ ${diag.newBloodGroup} પુનઃપ્રાપ્ત કર્યું`;
+      if (diag.cleanRollNumber) {
+        updateData.rollNumber = '';
+        action += ` (અને રોલ નંબર ખાલી કર્યો)`;
+      }
+      if (diag.fixedSection) {
+        updateData.section = diag.fixedSection;
+      }
+      if (diag.fixedDob && (!st.dob || st.dob === '')) {
+        updateData.dob = diag.fixedDob;
+      }
+    }
+
+    const detailItem = {
+      id: st.id,
+      studentName: st.studentName,
+      grNumber: st.grNumber,
+      standard: String(st.standard),
+      oldBloodGroup: diag.oldBloodGroup,
+      newBloodGroup: diag.newBloodGroup,
+      action,
+      description: diag.description,
+    };
+
+    details.push(detailItem);
+    studentsToUpdate.push({
+      id: st.id,
+      updateData,
+      detail: detailItem,
+    });
+  }
+
+  // Execute in Firestore batches of up to 400
+  const chunkSize = 400;
+  for (let i = 0; i < studentsToUpdate.length; i += chunkSize) {
+    const chunk = studentsToUpdate.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+
+    for (const item of chunk) {
+      const studentDocRef = doc(db, 'schools', schoolId, 'students', item.id);
+      batch.update(studentDocRef, item.updateData);
+    }
+
+    await batch.commit();
+  }
+
+  return {
+    totalScanned: students.length,
+    fixedCount: studentsToUpdate.length,
+    details,
+  };
 }
 

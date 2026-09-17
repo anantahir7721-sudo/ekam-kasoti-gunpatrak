@@ -1,6 +1,65 @@
 import { School, Student } from '../types';
 
 /**
+ * Computes font-size and letter-spacing for student names on ID cards.
+ * Student name is made big and prominent to highlight the student as the focal point,
+ * while automatically scaling down for long names so it never wraps or cuts.
+ */
+function getStudentNameInlineStyle(name: string): string {
+  const len = (name || '').trim().length;
+  if (len <= 16) {
+    return 'font-size: 13.5px; font-weight: 900;';
+  } else if (len <= 21) {
+    return 'font-size: 12.2px; font-weight: 900; letter-spacing: -0.1px;';
+  } else if (len <= 26) {
+    return 'font-size: 11.2px; font-weight: 800; letter-spacing: -0.15px;';
+  } else if (len <= 32) {
+    return 'font-size: 10.2px; font-weight: 800; letter-spacing: -0.2px;';
+  } else if (len <= 38) {
+    return 'font-size: 9.4px; font-weight: 800; letter-spacing: -0.25px;';
+  } else if (len <= 44) {
+    return 'font-size: 8.6px; font-weight: 800; letter-spacing: -0.3px;';
+  } else {
+    return 'font-size: 8.0px; font-weight: 800; letter-spacing: -0.35px;';
+  }
+}
+
+function getParentNameInlineStyle(name: string): string {
+  const len = (name || '').trim().length;
+  if (len <= 20) {
+    return 'font-size: 8.5px;';
+  } else if (len <= 28) {
+    return 'font-size: 7.8px; letter-spacing: -0.15px;';
+  } else if (len <= 36) {
+    return 'font-size: 7.0px; letter-spacing: -0.25px;';
+  } else {
+    return 'font-size: 6.3px; letter-spacing: -0.35px;';
+  }
+}
+
+/**
+ * Computes font-size and letter-spacing for the school name spanning the whole header.
+ * Dynamically scales with header width and length of school name so it fills the header
+ * prominently and cleanly without wrapping.
+ */
+function getSchoolNameInlineStyle(name: string): string {
+  const len = (name || '').trim().length;
+  if (len <= 22) {
+    return 'font-size: 13.5px; font-weight: 800; letter-spacing: 0.2px;';
+  } else if (len <= 30) {
+    return 'font-size: 12px; font-weight: 800; letter-spacing: 0.1px;';
+  } else if (len <= 38) {
+    return 'font-size: 10.8px; font-weight: 800; letter-spacing: 0px;';
+  } else if (len <= 48) {
+    return 'font-size: 9.8px; font-weight: 800; letter-spacing: -0.15px;';
+  } else if (len <= 58) {
+    return 'font-size: 8.8px; font-weight: 700; letter-spacing: -0.25px;';
+  } else {
+    return 'font-size: 8.0px; font-weight: 700; letter-spacing: -0.35px;';
+  }
+}
+
+/**
  * Generates and triggers high-resolution, print-ready PDF printing of Student ID Cards.
  * Formats multiple cards per A4 page with crisp borders, accurate margins,
  * properly embedded Anek Gujarati font, and professional school badge aesthetics.
@@ -26,6 +85,7 @@ export function printStudentIdCards(school: School, students: Student[]) {
       const secDisplay = st.section || st.division || '';
       const grDisplay = st.grNumber || '-';
       const dobDisplay = st.dob || '-';
+      const doaDisplay = st.doa || '-';
       const bloodDisplay = st.bloodGroup || '-';
       const parentName = st.fatherName || st.motherName || '-';
       const contactDisplay = st.contactNumber || st.mobileNumber || '-';
@@ -36,14 +96,11 @@ export function printStudentIdCards(school: School, students: Student[]) {
           <div class="id-card">
             <!-- Header -->
             <div class="card-header">
-              <div class="header-inner">
-                <div class="school-seal">
-                  <div class="seal-icon">🏫</div>
-                </div>
-                <div class="school-info">
-                  <div class="school-name">${school.schoolName}</div>
-                  <div class="school-meta">${school.district || ''} ${school.taluka ? `• તા. ${school.taluka}` : ''} • DISE: ${st.diseCode || schoolDise}</div>
-                </div>
+              <div class="school-name" style="${getSchoolNameInlineStyle(school.schoolName)}" title="${school.schoolName}">
+                ${school.schoolName}
+              </div>
+              <div class="school-meta">
+                ${school.district || ''} ${school.taluka ? `• તા. ${school.taluka}` : ''} • DISE: ${st.diseCode || schoolDise}
               </div>
               <div class="card-banner">વિદ્યાર્થી ઓળખપત્ર • STUDENT ID CARD</div>
             </div>
@@ -70,29 +127,35 @@ export function printStudentIdCards(school: School, students: Student[]) {
 
               <!-- Details Box -->
               <div class="details-col">
-                <div class="student-name" title="${st.studentName}">
+                <div class="student-name" title="${st.studentName}" style="${getStudentNameInlineStyle(st.studentName)}">
                   ${st.studentName}
                 </div>
 
                 <table class="details-table">
                   <tr>
-                    <td class="lbl">ધોરણ (Std):</td>
+                    <td class="lbl">ધોરણ:</td>
                     <td class="val highlight">${stdDisplay} ${secDisplay ? `(${secDisplay})` : ''}</td>
-                    <td class="lbl">રોલ નં:</td>
+                    <td class="lbl lbl-roll">રોલ:</td>
                     <td class="val">${st.rollNumber || '-'}</td>
                   </tr>
                   <tr>
-                    <td class="lbl">જન્મ તારીખ:</td>
-                    <td class="val">${dobDisplay}</td>
+                    <td class="lbl">જન્મ:</td>
+                    <td class="val val-dob">${dobDisplay}</td>
+                    <td class="lbl lbl-doa">પ્રવેશ:</td>
+                    <td class="val val-doa highlight-doa">${doaDisplay}</td>
+                  </tr>
+                  <tr>
                     <td class="lbl">બ્લડ ગ્રૂપ:</td>
                     <td class="val highlight-blood">${bloodDisplay}</td>
+                    <td class="lbl lbl-caste">જાતિ:</td>
+                    <td class="val">${st.caste || '-'}</td>
                   </tr>
                   <tr>
                     <td class="lbl">વાલીનું નામ:</td>
-                    <td class="val" colspan="3">${parentName}</td>
+                    <td class="val parent-name" colspan="3" style="${getParentNameInlineStyle(parentName)}">${parentName}</td>
                   </tr>
                   <tr>
-                    <td class="lbl">સંપર્ક / Mobile:</td>
+                    <td class="lbl">સંપર્ક:</td>
                     <td class="val" colspan="3">${contactDisplay}</td>
                   </tr>
                   <tr>
@@ -200,51 +263,35 @@ export function printStudentIdCards(school: School, students: Student[]) {
         .card-header {
           background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
           color: #ffffff;
-          padding: 4px 6px 3px 6px;
+          padding: 5px 6px 3px 6px;
           border-bottom: 2px solid #e27d4e;
-        }
-
-        .header-inner {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-
-        .school-seal {
-          width: 22px;
-          height: 22px;
-          background: #e27d4e;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          font-size: 11px;
-        }
-
-        .school-info {
-          flex: 1;
-          min-width: 0;
-          line-height: 1.15;
+          text-align: center;
         }
 
         .school-name {
-          font-size: 11.5px;
+          width: 100%;
+          text-align: center;
           font-weight: 800;
           text-transform: uppercase;
           white-space: nowrap;
           overflow: hidden;
-          text-overflow: ellipsis;
-          letter-spacing: 0.3px;
+          text-overflow: clip;
+          letter-spacing: 0.2px;
           color: #ffffff;
+          line-height: 1.2;
+          margin-bottom: 1.5px;
         }
 
         .school-meta {
-          font-size: 8.5px;
+          width: 100%;
+          text-align: center;
+          font-size: 8px;
           color: #cbd5e1;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          line-height: 1.15;
+          margin-bottom: 2px;
         }
 
         .card-banner {
@@ -253,10 +300,10 @@ export function printStudentIdCards(school: School, students: Student[]) {
           text-align: center;
           font-size: 8px;
           font-weight: 700;
-          padding: 1px 0;
-          margin-top: 3px;
+          padding: 1.5px 0;
           border-radius: 2px;
           letter-spacing: 0.5px;
+          line-height: 1.2;
         }
 
         /* Card Body */
@@ -353,15 +400,24 @@ export function printStudentIdCards(school: School, students: Student[]) {
         }
 
         .student-name {
-          font-size: 11px;
-          font-weight: 800;
           color: #0f172a;
-          border-bottom: 1.5px solid #e2e8f0;
-          padding-bottom: 2px;
-          margin-bottom: 2px;
+          font-weight: 900;
+          background: #f1f5f9;
+          border-left: 3.5px solid #e27d4e;
+          border-bottom: 1px solid #cbd5e1;
+          padding: 2px 4px 2px 5px;
+          margin-bottom: 3px;
           white-space: nowrap;
           overflow: hidden;
-          text-overflow: ellipsis;
+          text-overflow: clip;
+          line-height: 1.2;
+          border-radius: 0 4px 4px 0;
+        }
+
+        .details-table .parent-name {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: clip;
         }
 
         .details-table {
@@ -372,25 +428,49 @@ export function printStudentIdCards(school: School, students: Student[]) {
         }
 
         .details-table td {
-          padding: 1px 2px;
-          vertical-align: top;
+          padding: 1px 1px;
+          vertical-align: middle;
         }
 
         .details-table .lbl {
           font-weight: 600;
           color: #475569;
           white-space: nowrap;
-          width: 22%;
+          width: 1%;
         }
 
         .details-table .val {
           font-weight: 700;
           color: #0f172a;
+          white-space: nowrap;
+          padding-left: 2px;
+          padding-right: 3px;
+        }
+
+        .details-table .lbl-roll,
+        .details-table .lbl-doa,
+        .details-table .lbl-caste {
+          padding-left: 4px;
         }
 
         .details-table .val.highlight {
           color: #9d512d;
           font-size: 9.5px;
+          font-weight: 800;
+        }
+
+        .details-table .val-dob {
+          font-size: 8.2px;
+          letter-spacing: -0.15px;
+          white-space: nowrap;
+        }
+
+        .details-table .val.highlight-doa {
+          color: #0369a1;
+          font-weight: 700;
+          font-size: 7.8px;
+          letter-spacing: -0.2px;
+          white-space: nowrap;
         }
 
         .details-table .val.highlight-blood {
@@ -467,8 +547,72 @@ export function printStudentIdCards(school: School, students: Student[]) {
       </div>
 
       <script>
+        function autoFitIdCardNames() {
+          // 1. Auto-fit school name in whole header
+          var schoolTitles = document.querySelectorAll('.school-name');
+          schoolTitles.forEach(function(el) {
+            var parent = el.parentElement;
+            if (!parent) return;
+            var maxW = (parent.getBoundingClientRect ? parent.getBoundingClientRect().width : parent.clientWidth) - 4;
+            if (maxW <= 0) return;
+            var curSize = parseFloat(window.getComputedStyle(el).fontSize) || 13.5;
+            while (el.scrollWidth > maxW && curSize > 7.0) {
+              curSize -= 0.2;
+              el.style.fontSize = curSize + 'px';
+              el.style.letterSpacing = '-0.2px';
+            }
+          });
+
+          // 2. Auto-fit student names: shrink font size only if text overflows container
+          var studentNames = document.querySelectorAll('.student-name');
+          studentNames.forEach(function(el) {
+            var parent = el.parentElement;
+            if (!parent) return;
+            var maxW = (parent.getBoundingClientRect ? parent.getBoundingClientRect().width : parent.clientWidth) - 8;
+            if (maxW <= 0) return;
+            
+            var curSize = parseFloat(window.getComputedStyle(el).fontSize) || 13.5;
+            while (el.scrollWidth > maxW && curSize > 7.2) {
+              curSize -= 0.2;
+              el.style.fontSize = curSize + 'px';
+              el.style.letterSpacing = '-0.25px';
+            }
+          });
+
+          // 3. Auto-fit parent names
+          var parentNames = document.querySelectorAll('.parent-name');
+          parentNames.forEach(function(el) {
+            var parent = el.parentElement;
+            if (!parent) return;
+            var maxW = el.clientWidth || parent.clientWidth || 180;
+            if (maxW <= 0) return;
+            
+            var curSize = parseFloat(window.getComputedStyle(el).fontSize) || 8.5;
+            while (el.scrollWidth > maxW && curSize > 5.2) {
+              curSize -= 0.2;
+              el.style.fontSize = curSize + 'px';
+              el.style.letterSpacing = '-0.2px';
+            }
+          });
+
+          // 4. Ensure admission date fits without wrapping
+          var doaElements = document.querySelectorAll('.val-doa');
+          doaElements.forEach(function(el) {
+            var parent = el.parentElement;
+            if (!parent) return;
+            var maxW = el.clientWidth || 55;
+            var curSize = parseFloat(window.getComputedStyle(el).fontSize) || 8.0;
+            while (el.scrollWidth > maxW && curSize > 6.5) {
+              curSize -= 0.2;
+              el.style.fontSize = curSize + 'px';
+            }
+          });
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
+          autoFitIdCardNames();
           setTimeout(() => {
+            autoFitIdCardNames();
             window.print();
           }, 600);
         });

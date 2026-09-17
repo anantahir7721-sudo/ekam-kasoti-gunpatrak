@@ -24,6 +24,7 @@ import { School, Student } from '../types';
 import { updateStudent } from '../services/firestoreService';
 import { compressStudentPhoto } from '../utils/imageUtils';
 import { printStudentIdCards } from '../utils/idCardPdf';
+import { cleanAndNormalizeBloodGroup } from '../utils/bloodGroupUtils';
 
 interface StudentProfileModalProps {
   student: Student;
@@ -65,7 +66,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
     fatherName: student.fatherName || '',
     gender: student.gender || 'Boy',
     caste: student.caste || '',
-    bloodGroup: student.bloodGroup || '',
+    bloodGroup: cleanAndNormalizeBloodGroup(student.bloodGroup) || '',
     contactNumber: student.contactNumber || student.mobileNumber || '',
     fatherOccupation: student.fatherOccupation || '',
     motherOccupation: student.motherOccupation || '',
@@ -482,10 +483,10 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                   </span>
                 </div>
 
-                {student.bloodGroup && (
+                {cleanAndNormalizeBloodGroup(student.bloodGroup) && (
                   <div className="px-3 py-1 rounded-lg bg-red-950/40 border border-red-800/40 text-xs font-bold text-red-300 flex items-center gap-1.5">
                     <Heart className="w-3.5 h-3.5 text-red-400 fill-red-400" />
-                    <span>{student.bloodGroup}</span>
+                    <span>{cleanAndNormalizeBloodGroup(student.bloodGroup)}</span>
                   </div>
                 )}
 
