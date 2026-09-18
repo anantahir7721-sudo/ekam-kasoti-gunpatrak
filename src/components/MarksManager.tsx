@@ -511,7 +511,7 @@ export const MarksManager: React.FC<MarksManagerProps> = ({
 
   const handlePrintA4 = () => {
     if (!currentSubject) return;
-    printEkamKasotiA4(school.schoolName, school.diseCode, school.district, currentSubject, exportEntries);
+    printEkamKasotiA4(school.schoolName, school.diseCode, school.district, currentSubject, exportEntries, school.logoUrl);
   };
 
   // Group questions by section if applicable (e.g. Science & Tech, Std 10 Gujarati)

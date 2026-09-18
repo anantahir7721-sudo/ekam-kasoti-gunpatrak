@@ -88,7 +88,8 @@ export function printEkamKasotiA4(
   diseCode: string,
   district: string,
   subject: SubjectConfig,
-  entries: StudentMarkEntry[]
+  entries: StudentMarkEntry[],
+  schoolLogo?: string
 ) {
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
@@ -175,11 +176,24 @@ export function printEkamKasotiA4(
           margin-bottom: 2px;
           letter-spacing: 0.03em;
         }
+        .school-logo-title-wrap {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          margin: 4px 0;
+        }
+        .school-header-logo {
+          width: 44px;
+          height: 44px;
+          object-fit: contain;
+          border-radius: 6px;
+        }
         .school-name {
           font-size: 18px;
           font-weight: 800;
           text-transform: uppercase;
-          margin: 0 0 4px 0;
+          margin: 0;
           letter-spacing: 0.5px;
           color: #0f172a;
         }
@@ -277,7 +291,10 @@ export function printEkamKasotiA4(
 
       <div class="header-container">
         <div class="app-branding">એકમ કસોટી ગુણપત્રક • Created by NR Chad</div>
-        <h1 class="school-name">${schoolName}</h1>
+        <div class="school-logo-title-wrap">
+          ${schoolLogo ? `<img src="${schoolLogo}" alt="School Logo" class="school-header-logo" />` : ''}
+          <h1 class="school-name">${schoolName}</h1>
+        </div>
         <div class="exam-title">એકમ કસોટી પ્રથમ સત્ર — ધોરણ: ${subject.standard}</div>
         <div class="academic-year">શૈક્ષણિક વર્ષ ૨૦૨૬–૨૭</div>
         <div class="meta-strip">

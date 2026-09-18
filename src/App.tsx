@@ -15,8 +15,10 @@ import { ExamsManager } from './components/ExamsManager';
 import { ResultsManager } from './components/ResultsManager';
 import { ReportsManager } from './components/ReportsManager';
 import { SchoolProfileManager } from './components/SchoolProfileManager';
+import { OnlineExamManager } from './components/OnlineExamManager';
+import { StudentPortal } from './components/StudentPortal';
 
-import { School, Student, MarkRecord, Staff, SchoolStatus } from './types';
+import { School, Student, MarkRecord, Staff, SchoolStatus, StudentSession } from './types';
 import { checkIsAdmin } from './services/adminService';
 import {
   subscribeToAuth,
@@ -32,6 +34,10 @@ import {
   getMarks,
 } from './services/firestoreService';
 import { subscribeToStaff } from './services/staffService';
+import {
+  getStoredStudentSession,
+  clearStudentSession,
+} from './services/onlineExamService';
 import { Loader2 } from 'lucide-react';
 
 export default function App() {
@@ -40,6 +46,11 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [school, setSchool] = useState<School | null>(null);
   const [statusRefreshing, setStatusRefreshing] = useState(false);
+
+  // Student Portal State
+  const [studentSession, setStudentSession] = useState<StudentSession | null>(() =>
+    getStoredStudentSession()
+  );
 
   // Active School Data
   const [students, setStudents] = useState<Student[]>([]);
@@ -188,6 +199,19 @@ export default function App() {
     setAuthStatus('admin');
   };
 
+  // 0. Active Student Session: Render dedicated Student Portal
+  if (studentSession) {
+    return (
+      <StudentPortal
+        session={studentSession}
+        onLogout={() => {
+          clearStudentSession();
+          setStudentSession(null);
+        }}
+      />
+    );
+  }
+
   // 1. Initial Auth Loading Screen & Role Verification
   if (authStatus === 'loading') {
     return (
@@ -203,7 +227,7 @@ export default function App() {
     );
   }
 
-  // 2. Unauthenticated: Show AuthScreen (School Login / Register or Admin Login)
+  // 2. Unauthenticated: Show AuthScreen (School Login / Register or Admin Login or Student Login)
   if (authStatus === 'unauthenticated' || !user) {
     return (
       <div className="min-h-screen app-container flex flex-col">
@@ -217,6 +241,7 @@ export default function App() {
           <AuthScreen
             onSchoolAuthSuccess={handleSchoolAuthSuccess}
             onAdminAuthSuccess={handleAdminAuthSuccess}
+            onStudentAuthSuccess={(sess) => setStudentSession(sess)}
           />
         </main>
         <footer className="bg-[#0e141b]/90 border-t border-white/10 py-4 text-center text-xs text-slate-400 space-y-1">
@@ -348,6 +373,14 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'online_exams' && (
+            <OnlineExamManager
+              school={school}
+              students={students}
+              onBack={() => setActiveTab('overview')}
+            />
+          )}
+
           {activeTab === 'results' && (
             <ResultsManager
               school={school}
@@ -388,7 +421,7 @@ export default function App() {
           {activeTab === 'profile' && (
             <SchoolProfileManager
               school={school}
-              onProfileUpdated={(updated) => setSchool(updated)}
+              onProfileUpdated={(updated) => setSchool((prev) => prev ? { ...prev, ...updated } : prev)}
               onBack={() => setActiveTab('overview')}
             />
           )}

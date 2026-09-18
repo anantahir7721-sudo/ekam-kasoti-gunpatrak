@@ -263,6 +263,19 @@ export const ResultsManager: React.FC<ResultsManagerProps> = ({
             padding-bottom: 6px;
             margin-bottom: 8px;
           }
+          .school-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 2px;
+          }
+          .school-logo-img {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+            border-radius: 4px;
+          }
           .school-name {
             font-size: 16pt;
             font-weight: 800;
@@ -330,7 +343,10 @@ export const ResultsManager: React.FC<ResultsManagerProps> = ({
       </head>
       <body>
         <div class="header">
-          <h1 class="school-name">${school.schoolName}</h1>
+          <div class="school-header-row">
+            ${school.logoUrl ? `<img src="${school.logoUrl}" alt="School Logo" class="school-logo-img" />` : ''}
+            <h1 class="school-name">${school.schoolName}</h1>
+          </div>
           <div class="sub-header">
             ${school.village ? school.village + ', ' : ''}${school.taluka ? school.taluka + ', ' : ''}${school.district} • DISE કોડ: <strong>${school.diseCode}</strong>
           </div>
@@ -504,6 +520,19 @@ export const ResultsManager: React.FC<ResultsManagerProps> = ({
             padding-bottom: 8px;
             margin-bottom: 10px;
           }
+          .school-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 2px;
+          }
+          .school-logo-img {
+            width: 46px;
+            height: 46px;
+            object-fit: contain;
+            border-radius: 4px;
+          }
           .school-title {
             font-size: 19pt;
             font-weight: 800;
@@ -603,7 +632,10 @@ export const ResultsManager: React.FC<ResultsManagerProps> = ({
           <div>
             <!-- School Header -->
             <div class="header">
-              <h1 class="school-title">${school.schoolName}</h1>
+              <div class="school-header-row">
+                ${school.logoUrl ? `<img src="${school.logoUrl}" alt="School Logo" class="school-logo-img" />` : ''}
+                <h1 class="school-title">${school.schoolName}</h1>
+              </div>
               <div class="school-meta">
                 ${school.village ? school.village + ', ' : ''}${school.taluka ? school.taluka + ', ' : ''}${school.district} • DISE કોડ: <strong>${school.diseCode}</strong>
               </div>

@@ -143,6 +143,19 @@ export const ReportsManager: React.FC<ReportsManagerProps> = ({
             padding-bottom: 12px;
             margin-bottom: 20px;
           }
+          .school-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 4px;
+          }
+          .school-logo {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            border-radius: 6px;
+          }
           .school-title {
             font-size: 20pt;
             font-weight: 800;
@@ -223,7 +236,10 @@ export const ReportsManager: React.FC<ReportsManagerProps> = ({
         </div>
 
         <div class="header">
-          <h1 class="school-title">${school.schoolName}</h1>
+          <div class="school-header-row">
+            ${school.logoUrl ? `<img src="${school.logoUrl}" alt="School Logo" class="school-logo" />` : ''}
+            <h1 class="school-title">${school.schoolName}</h1>
+          </div>
           <div style="font-size: 10pt; color: #475569; margin-top: 4px;">
             ${school.district} • DISE: ${school.diseCode}
           </div>

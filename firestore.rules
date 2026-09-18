@@ -26,27 +26,29 @@ service cloud.firestore {
     }
 
     // Admin records collection: /admins/{adminUid}
-    // An authenticated user can ALWAYS read (get) their own admin record directly using their UID
-    // without circular lookup or recursion. Normal school users cannot read other admins or write.
-    // Existing verified admins can list and manage admin records.
     match /admins/{adminUid} {
       allow get: if isAuthenticated() && request.auth.uid == adminUid;
       allow list: if isAdmin();
       allow write: if isAdmin();
     }
 
+    // Collection group match for student portal login (finding student by their Student DISE Code)
+    match /{path=**}/students/{studentId} {
+      allow read: if true;
+    }
+
     // School profile document: /schools/{schoolId}
     match /schools/{schoolId} {
-      // Admin can read all schools for inspection; school owner can read own school
-      allow read: if isSchoolOwner(schoolId) || isAdmin();
+      // Public directory read: enables students and public to verify school by 11-digit DISE code
+      allow read: if true;
 
-      // New school registration: must be self UID, must register with status == 'pending'
+      // New school registration: must be authenticated, self UID, status == 'pending'
       allow create: if isSchoolOwner(schoolId) &&
         request.resource.data.ownerUid == request.auth.uid &&
         request.resource.data.status == "pending";
 
       // Status updates: Admin can update any school (approve, reject, activate, deactivate)
-      // School owner can update profile information (name, district), but is strictly forbidden from changing status or DISE code!
+      // School owner can update profile information (name, district, address), but CANNOT change status or DISE code
       allow update: if isAdmin() || (
         isSchoolOwner(schoolId) &&
         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'ownerUid', 'id', 'diseCode']))
@@ -56,15 +58,40 @@ service cloud.firestore {
       allow delete: if isAdmin();
 
       // Subcollection: Students belonging to this school
+      // Read allowed for student verification & portal; write strictly locked to School Owner
       match /students/{studentId} {
-        allow read: if isSchoolOwner(schoolId) || isAdmin();
+        allow read: if true;
         allow write: if isSchoolOwner(schoolId);
       }
 
       // Subcollection: Marks belonging to this school
+      // Read allowed for student results; write strictly locked to School Owner
       match /marks/{markId} {
-        allow read: if isSchoolOwner(schoolId) || isAdmin();
+        allow read: if true;
         allow write: if isSchoolOwner(schoolId);
+      }
+
+      // Subcollection: Staff belonging to this school
+      match /staff/{staffId} {
+        allow read, write: if isSchoolOwner(schoolId) || isAdmin();
+      }
+
+      // Subcollection: Online MCQ Exams
+      match /online_exams/{examId} {
+        allow read: if true;
+        allow write: if isSchoolOwner(schoolId);
+
+        match /questions/{questionId} {
+          allow read: if true;
+          allow write: if isSchoolOwner(schoolId);
+        }
+      }
+
+      // Subcollection: Exam Attempts
+      match /exam_attempts/{attemptId} {
+        allow read: if true;
+        allow create, update: if true;
+        allow delete: if isSchoolOwner(schoolId);
       }
 
       // All other school-specific subcollections

@@ -20,6 +20,7 @@ export interface School {
   contactEmail?: string;
   contactPhone?: string;
   establishedYear?: string;
+  logoUrl?: string;
 }
 
 export interface AdminRecord {
@@ -152,4 +153,6 @@ export interface AuthState {
   loading: boolean;
   error: string | null;
 }
+
+export * from './onlineExam';
 

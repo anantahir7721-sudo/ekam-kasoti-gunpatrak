@@ -30,6 +30,8 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
   const [selectedDivision, setSelectedDivision] = useState<string>('ALL');
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [selectedStaffIds, setSelectedStaffIds] = useState<Set<string>>(new Set());
+  const [headerTheme, setHeaderTheme] = useState<'dark' | 'light'>('dark');
+  const [logoContrast, setLogoContrast] = useState<'normal' | 'contrast'>('normal');
 
   // Filter students
   const filteredStudents = students.filter((st) => {
@@ -79,33 +81,34 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
   );
 
   // Dynamic font sizing helpers to ensure long names never cut or wrap
-  const getNamePrintStyle = (name: string, basePt: number = 10.5) => {
+  const getNamePrintStyle = (name: string, basePt: number = 11.5) => {
     const len = (name || '').trim().length;
     if (len <= 16) return `font-size: ${basePt}pt; font-weight: 900;`;
-    if (len <= 21) return `font-size: ${(basePt * 0.90).toFixed(2)}pt; font-weight: 900; letter-spacing: -0.1px;`;
-    if (len <= 26) return `font-size: ${(basePt * 0.82).toFixed(2)}pt; font-weight: 800; letter-spacing: -0.15px;`;
-    if (len <= 32) return `font-size: ${(basePt * 0.74).toFixed(2)}pt; font-weight: 800; letter-spacing: -0.2px;`;
-    if (len <= 38) return `font-size: ${(basePt * 0.67).toFixed(2)}pt; font-weight: 800; letter-spacing: -0.25px;`;
-    return `font-size: ${(basePt * 0.60).toFixed(2)}pt; font-weight: 800; letter-spacing: -0.35px;`;
+    if (len <= 21) return `font-size: ${(basePt * 0.92).toFixed(2)}pt; font-weight: 900; letter-spacing: -0.1px;`;
+    if (len <= 26) return `font-size: ${(basePt * 0.84).toFixed(2)}pt; font-weight: 800; letter-spacing: -0.15px;`;
+    if (len <= 32) return `font-size: ${(basePt * 0.77).toFixed(2)}pt; font-weight: 800; letter-spacing: -0.2px;`;
+    if (len <= 38) return `font-size: ${(basePt * 0.70).toFixed(2)}pt; font-weight: 800; letter-spacing: -0.25px;`;
+    return `font-size: ${(basePt * 0.64).toFixed(2)}pt; font-weight: 800; letter-spacing: -0.35px;`;
   };
 
   const getSchoolTitlePrintStyle = (name: string) => {
     const len = (name || '').trim().length;
-    if (len <= 20) return 'font-size: 11pt; font-weight: 800; letter-spacing: 0.2px;';
-    if (len <= 28) return 'font-size: 9.8pt; font-weight: 800; letter-spacing: 0.1px;';
-    if (len <= 36) return 'font-size: 8.8pt; font-weight: 800; letter-spacing: 0px;';
-    if (len <= 46) return 'font-size: 8.0pt; font-weight: 800; letter-spacing: -0.15px;';
-    if (len <= 56) return 'font-size: 7.2pt; font-weight: 700; letter-spacing: -0.25px;';
-    return 'font-size: 6.5pt; font-weight: 700; letter-spacing: -0.35px;';
+    // Strict single-line fit: dynamically scales so school name NEVER wraps or gets cut
+    if (len <= 18) return 'font-size: 10.5pt; font-weight: 800; letter-spacing: 0.1px; white-space: nowrap;';
+    if (len <= 26) return 'font-size: 9.5pt; font-weight: 800; letter-spacing: 0px; white-space: nowrap;';
+    if (len <= 34) return 'font-size: 8.5pt; font-weight: 800; letter-spacing: -0.15px; white-space: nowrap;';
+    if (len <= 42) return 'font-size: 7.8pt; font-weight: 800; letter-spacing: -0.2px; white-space: nowrap;';
+    if (len <= 52) return 'font-size: 7.0pt; font-weight: 800; letter-spacing: -0.3px; white-space: nowrap;';
+    return 'font-size: 6.4pt; font-weight: 700; letter-spacing: -0.35px; white-space: nowrap;';
   };
 
   const getPreviewNameFontSize = (name: string) => {
     const len = (name || '').trim().length;
-    if (len <= 16) return 'text-sm font-black text-amber-200';
-    if (len <= 22) return 'text-[13px] font-extrabold text-amber-200';
-    if (len <= 28) return 'text-xs font-bold text-amber-200';
-    if (len <= 34) return 'text-[11px] font-bold text-amber-200';
-    return 'text-[10px] font-bold text-amber-200';
+    if (len <= 16) return 'text-[15.5px] font-black text-amber-200';
+    if (len <= 22) return 'text-[14.5px] font-black text-amber-200';
+    if (len <= 28) return 'text-[13.5px] font-extrabold text-amber-200';
+    if (len <= 34) return 'text-[12px] font-bold text-amber-200';
+    return 'text-[11px] font-bold text-amber-200';
   };
 
   // Trigger Print with A4 Card Layout
@@ -116,102 +119,166 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
       return;
     }
 
+    const isLightHeader = headerTheme === 'light';
+    const isContrastLogo = logoContrast === 'contrast';
+
     const cardsHtml =
       cardType === 'students'
         ? studentsToPrint
-            .map(
-              (st) => `
+            .map((st) => {
+              const studentDise =
+                (st.diseCode && st.diseCode.trim()) ||
+                (st.studentStateCode && st.studentStateCode.trim()) ||
+                (st.studentId && st.studentId.trim()) ||
+                '-';
+
+              const parentName =
+                st.fatherName && st.fatherName.trim()
+                  ? st.fatherName.trim()
+                  : st.motherName && st.motherName.trim()
+                  ? st.motherName.trim()
+                  : (() => {
+                      const parts = (st.studentName || '').trim().split(/\s+/);
+                      if (parts.length >= 3) {
+                        return parts[1] + (parts[2] ? ' ' + parts[2] : '');
+                      } else if (parts.length === 2) {
+                        return parts[1];
+                      }
+                      return '-';
+                    })();
+
+              const studentAddress =
+                (st.address && st.address.trim()) ||
+                (school.village
+                  ? school.village + (school.taluka ? ', ' + school.taluka : '')
+                  : school.district || '-');
+
+              return `
           <div class="id-card">
-            <div class="card-header">
-              <div class="school-title" style="${getSchoolTitlePrintStyle(school.schoolName)}">${school.schoolName}</div>
-              <div class="school-sub">${school.district} • DISE: ${school.diseCode}</div>
-              <div class="badge-tag">વિદ્યાર્થી ઓળખપત્ર (STUDENT ID)</div>
+            <div class="card-header ${isLightHeader ? 'light-header' : ''}">
+              <div class="header-logo-row">
+                ${school.logoUrl ? `<img src="${school.logoUrl}" class="school-logo-img ${isContrastLogo ? 'logo-contrast' : ''}" alt="Logo" />` : ''}
+                <div class="header-titles">
+                  <div class="school-title" style="${getSchoolTitlePrintStyle(school.schoolName)}" title="${school.schoolName}">${school.schoolName}</div>
+                  <div class="school-sub-row">
+                    <span class="school-sub">DISE: ${school.diseCode} ${school.district ? `• ${school.district}` : ''}</span>
+                    <span class="badge-tag">વિદ્યાર્થી ID Card</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="card-body">
-              <div class="photo-box">
-                ${
-                  st.photoUrl
-                    ? `<img src="${st.photoUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" />`
-                    : `<div class="avatar-initial">${st.studentName.charAt(0) || 'S'}</div>
-                       <div class="photo-caption">PHOTO</div>`
-                }
+              <div class="photo-col">
+                <div class="photo-box">
+                  ${
+                    st.photoUrl
+                      ? `<img src="${st.photoUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" />`
+                      : `<div class="avatar-initial">${st.studentName.charAt(0) || 'S'}</div>
+                         <div class="photo-caption">PHOTO</div>`
+                  }
+                </div>
+                <div class="gr-pill">G.R. ${st.grNumber || '-'}</div>
+                ${st.bloodGroup ? `<div class="blood-pill">BLOOD ${st.bloodGroup}</div>` : ''}
               </div>
               <div class="details-box">
-                <div class="name-field" style="${getNamePrintStyle(st.studentName, 10.5)}" title="${st.studentName}">${st.studentName}</div>
+                <div class="name-field" style="${getNamePrintStyle(st.studentName, 11)}" title="${st.studentName}">${st.studentName}</div>
                 <div class="field-row">
                   <span class="lbl">ધોરણ:</span>
                   <span class="val font-bold">${st.standard} ${st.section || st.division ? `(${st.section || st.division})` : ''}</span>
-                  <span class="lbl" style="margin-left: 6px;">રોલ:</span>
-                  <span class="val">${st.rollNumber || '-'}</span>
+                  <span class="lbl" style="margin-left: 8px;">રોલ નં:</span>
+                  <span class="val font-bold">${st.rollNumber || '-'}</span>
                 </div>
                 <div class="field-row">
-                  <span class="lbl">G.R. નં:</span>
-                  <span class="val font-bold">${st.grNumber || '-'}</span>
-                  <span class="lbl" style="margin-left: 6px;">બ્લડ:</span>
-                  <span class="val font-bold text-red">${st.bloodGroup || '-'}</span>
+                  <span class="lbl">વિદ્યાર્થી DISE:</span>
+                  <span class="val mono-dise">${studentDise}</span>
                 </div>
                 <div class="field-row">
-                  <span class="lbl">જન્મ:</span>
-                  <span class="val" style="font-size:6.3pt;">${st.dob || '-'}</span>
-                  <span class="lbl" style="margin-left: 4px;">પ્રવેશ:</span>
-                  <span class="val val-doa" style="color:#0284c7;font-weight:700;font-size:6.2pt;letter-spacing:-0.2px;white-space:nowrap;">${st.doa || '-'}</span>
+                  <span class="lbl">જન્મ તારીખ:</span>
+                  <span class="val font-bold" style="font-size:6.3pt;">${st.dob || '-'}</span>
+                  <span class="lbl" style="margin-left: 6px;">પ્રવેશ:</span>
+                  <span class="val val-doa" style="color:#0284c7;font-weight:700;font-size:6.1pt;">${st.doa || '-'}</span>
                 </div>
                 <div class="field-row">
                   <span class="lbl">સંપર્ક:</span>
-                  <span class="val">${st.contactNumber || '-'}</span>
+                  <span class="val font-bold">${st.contactNumber || '-'}</span>
+                  ${st.caste ? `<span class="lbl" style="margin-left: 6px;">જાતિ:</span><span class="val font-bold">${st.caste}</span>` : ''}
+                </div>
+                <div class="field-row">
+                  <span class="lbl">સરનામું:</span>
+                  <span class="val" title="${studentAddress}" style="font-size:5.9pt;color:#475569;">${studentAddress}</span>
                 </div>
               </div>
             </div>
             <div class="card-footer">
               <div class="validity">શૈક્ષણિક વર્ષ ૨૦૨૬–૨૭</div>
               <div class="sig-box">
-                <div class="sig-line">આચાર્યશ્રી સહી</div>
+                <div class="sig-line">આચાર્યશ્રી સહી & સિક્કો</div>
               </div>
             </div>
           </div>
-        `
-            )
+        `;
+            })
             .join('')
         : staffToPrint
             .map(
               (stf) => `
           <div class="id-card staff-card">
-            <div class="card-header staff-header">
-              <div class="school-title" style="${getSchoolTitlePrintStyle(school.schoolName)}">${school.schoolName}</div>
-              <div class="school-sub">${school.district} • DISE: ${school.diseCode}</div>
-              <div class="badge-tag staff-tag">સ્ટાફ ઓળખપત્ર (STAFF ID)</div>
+            <div class="card-header staff-header ${isLightHeader ? 'light-header' : ''}">
+              <div class="header-logo-row">
+                ${school.logoUrl ? `<img src="${school.logoUrl}" class="school-logo-img ${isContrastLogo ? 'logo-contrast' : ''}" alt="Logo" />` : ''}
+                <div class="header-titles">
+                  <div class="school-title" style="${getSchoolTitlePrintStyle(school.schoolName)}" title="${school.schoolName}">${school.schoolName}</div>
+                  <div class="school-sub-row">
+                    <span class="school-sub">DISE: ${school.diseCode} ${school.district ? `• ${school.district}` : ''}</span>
+                    <span class="badge-tag staff-tag">સ્ટાફ ID Card</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="card-body">
-              <div class="photo-box">
-                <div class="avatar-initial staff-initial">${stf.fullName.charAt(0) || 'T'}</div>
-                <div class="photo-caption">PHOTO</div>
+              <div class="photo-col">
+                <div class="photo-box">
+                  ${
+                    stf.photoUrl
+                      ? `<img src="${stf.photoUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" />`
+                      : `<div class="avatar-initial staff-initial">${stf.fullName.charAt(0) || 'T'}</div>
+                         <div class="photo-caption">PHOTO</div>`
+                  }
+                </div>
+                ${stf.bloodGroup ? `<div class="blood-pill">BLOOD ${stf.bloodGroup}</div>` : ''}
               </div>
               <div class="details-box">
-                <div class="name-field" style="${getNamePrintStyle(stf.fullName, 10.5)}" title="${stf.fullName}">${stf.fullName}</div>
+                <div class="name-field" style="${getNamePrintStyle(stf.fullName, 10)}" title="${stf.fullName}">${stf.fullName}</div>
                 <div class="field-row">
                   <span class="lbl">હોદ્દો:</span>
                   <span class="val font-bold">${stf.designation}</span>
                 </div>
                 <div class="field-row">
                   <span class="lbl">વિષય:</span>
-                  <span class="val">${stf.subject || '-'}</span>
+                  <span class="val font-bold">${stf.subject || '-'}</span>
                 </div>
                 <div class="field-row">
                   <span class="lbl">લાયકાત:</span>
-                  <span class="val">${stf.qualification || '-'}</span>
+                  <span class="val font-bold">${stf.qualification || '-'}</span>
                 </div>
                 <div class="field-row">
                   <span class="lbl">મોબાઈલ:</span>
-                  <span class="val">${stf.mobile || '-'}</span>
-                  <span class="lbl" style="margin-left: 6px;">બ્લડ:</span>
-                  <span class="val">${stf.bloodGroup || '-'}</span>
+                  <span class="val font-bold">${stf.mobile || '-'}</span>
+                </div>
+                <div class="field-row">
+                  <span class="lbl">જોડાવાની તારીખ:</span>
+                  <span class="val" style="color:#0284c7;font-weight:700;">${stf.joiningDate || '-'}</span>
+                </div>
+                <div class="field-row">
+                  <span class="lbl">સરનામું:</span>
+                  <span class="val" title="${stf.address || '-'}" style="font-size:5.9pt;color:#475569;">${stf.address || school.district || '-'}</span>
                 </div>
               </div>
             </div>
             <div class="card-footer">
               <div class="validity">શાળા સ્ટાફ રેકોર્ડ</div>
               <div class="sig-box">
-                <div class="sig-line">આચાર્યશ્રી સહી</div>
+                <div class="sig-line">આચાર્યશ્રી સહી & સિક્કો</div>
               </div>
             </div>
           </div>
@@ -255,7 +322,7 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
           }
           .id-card {
             border: 1.5px solid #0f172a;
-            border-radius: 10px;
+            border-radius: 8px;
             overflow: hidden;
             width: 86mm;
             height: 54mm;
@@ -265,63 +332,164 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
             justify-content: space-between;
             page-break-inside: avoid;
             background: #ffffff;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-sizing: border-box;
           }
           .card-header {
-            background: #1e3a8a;
-            color: white;
-            padding: 4px 6px;
-            text-align: center;
+            background: linear-gradient(135deg, #090d16 0%, #1e293b 100%);
+            color: #ffffff;
+            padding: 2.2mm 3.5mm 1.8mm 3.5mm;
+            text-align: left;
+            border-bottom: 2px solid #f59c73;
+            box-sizing: border-box;
+          }
+          .card-header.light-header {
+            background: #ffffff !important;
+            border-bottom: 2px solid #e27d4e !important;
+            color: #0f172a !important;
+          }
+          .card-header.light-header .school-title {
+            color: #0f172a !important;
+          }
+          .card-header.light-header .school-sub {
+            color: #475569 !important;
+          }
+          .card-header.light-header .badge-tag {
+            background: #e27d4e !important;
+            color: #ffffff !important;
+          }
+          .card-header.light-header .school-logo-img {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          .card-header.light-header .school-logo-img.logo-contrast {
+            filter: brightness(0) !important; /* Pure black on white background */
+          }
+          .header-logo-row {
+            display: flex;
+            align-items: center;
+            gap: 5.5px;
+            width: 100%;
+          }
+          .school-logo-img {
+            width: 10.5mm;
+            height: 10.5mm;
+            max-width: 10.5mm;
+            max-height: 10.5mm;
+            object-fit: contain;
+            background: transparent !important;
+            padding: 0;
+            flex-shrink: 0;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          .school-logo-img.logo-contrast {
+            filter: brightness(0) invert(1); /* Pure white on black background */
+          }
+          .header-titles {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
           }
           .school-title {
-            font-size: 9pt;
             font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 0.2px;
-            line-height: 1.2;
-            white-space: nowrap;
+            line-height: 1.15;
+            color: #ffffff;
+            letter-spacing: 0.1px;
+            white-space: nowrap !important;
             overflow: hidden;
-            text-overflow: clip;
+            text-overflow: ellipsis;
+            width: 100%;
+          }
+          .school-sub-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 1px;
+            width: 100%;
           }
           .school-sub {
-            font-size: 6.5pt;
-            opacity: 0.9;
-            margin-top: 1px;
+            font-size: 5.8pt;
+            color: #cbd5e1;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
           .badge-tag {
             display: inline-block;
-            background: #fbbf24;
+            background: #f59c73;
             color: #0f172a;
-            font-size: 6pt;
+            font-size: 5.2pt;
             font-weight: 800;
-            padding: 1px 6px;
-            border-radius: 10px;
-            margin-top: 2px;
+            padding: 0.5px 5px;
+            border-radius: 4px;
+            letter-spacing: 0.2px;
+            white-space: nowrap;
           }
           .staff-header {
-            background: #78350f !important;
+            background: linear-gradient(135deg, #451a03 0%, #78350f 100%) !important;
+            border-bottom: 2px solid #fbbf24 !important;
           }
           .staff-tag {
             background: #fde68a !important;
+            color: #78350f !important;
           }
           .card-body {
-            padding: 5px 8px;
+            padding: 2mm 3.2mm 1.5mm 3.2mm;
             display: flex;
-            gap: 7px;
+            gap: 6.5px;
             flex: 1;
             align-items: center;
+            box-sizing: border-box;
+            overflow: hidden;
+          }
+          .photo-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-shrink: 0;
+            gap: 2px;
           }
           .photo-box {
-            width: 22mm;
-            height: 27mm;
-            border: 1px dashed #64748b;
-            border-radius: 6px;
+            width: 20mm;
+            height: 24.5mm;
+            border: 1px solid #94a3b8;
+            border-radius: 4px;
             background: #f8fafc;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
+            overflow: hidden;
+          }
+          .gr-pill {
+            font-size: 5.5pt;
+            font-weight: 800;
+            background: #f1f5f9;
+            color: #0f172a;
+            border-radius: 2.5px;
+            padding: 0.5px 2px;
+            text-align: center;
+            width: 100%;
+            border: 0.8px solid #cbd5e1;
+            font-family: monospace;
+          }
+          .blood-pill {
+            font-size: 5.2pt;
+            font-weight: 800;
+            background: #fef2f2;
+            color: #dc2626;
+            border-radius: 2.5px;
+            padding: 0.5px 2px;
+            text-align: center;
+            width: 100%;
+            border: 0.8px solid #fecaca;
+            font-family: inherit;
           }
           .avatar-initial {
             font-size: 14pt;
@@ -332,40 +500,47 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
             color: #78350f !important;
           }
           .photo-caption {
-            font-size: 5.5pt;
+            font-size: 5pt;
             color: #94a3b8;
-            margin-top: 2px;
+            margin-top: 1px;
           }
           .details-box {
             flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
             overflow: hidden;
           }
           .name-field {
-            font-size: 10.5pt;
+            font-size: 9.8pt;
             font-weight: 900;
             color: #0f172a;
             background: #f8fafc;
-            border-left: 3px solid #e27d4e;
+            border-left: 2.5px solid #e27d4e;
             border-bottom: 1px solid #cbd5e1;
-            padding: 1.5px 4px;
-            margin-bottom: 3.5px;
+            padding: 1.2px 3.5px;
+            margin-bottom: 1.5px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: clip;
-            line-height: 1.2;
+            line-height: 1.18;
             border-radius: 0 3px 3px 0;
           }
           .field-row {
-            font-size: 6.8pt;
-            line-height: 1.45;
+            font-size: 6.2pt;
+            line-height: 1.38;
             display: flex;
             align-items: center;
             color: #334155;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
           .field-row .lbl {
             color: #64748b;
-            margin-right: 3px;
+            margin-right: 2.5px;
             font-weight: 600;
             white-space: nowrap;
             flex-shrink: 0;
@@ -373,7 +548,15 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
           .field-row .val {
             color: #0f172a;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
             flex-shrink: 0;
+          }
+          .field-row .val.mono-dise {
+            font-family: monospace;
+            font-weight: 800;
+            color: #0369a1;
+            letter-spacing: 0.2px;
           }
           .field-row .val.val-doa {
             white-space: nowrap;
@@ -386,28 +569,32 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
             color: #dc2626 !important;
           }
           .card-footer {
-            background: #f1f5f9;
+            background: #f8fafc;
             border-top: 1px solid #cbd5e1;
-            padding: 3px 8px;
+            padding: 1mm 3.5mm;
             display: flex;
-            align-items: flex-end;
+            align-items: center;
             justify-content: space-between;
+            height: 6.2mm;
+            box-sizing: border-box;
+            margin-top: auto;
+            flex-shrink: 0;
           }
           .validity {
             font-size: 5.8pt;
             color: #475569;
             font-weight: 600;
+            line-height: 1;
           }
           .sig-box {
-            text-align: center;
+            text-align: right;
+            line-height: 1;
           }
           .sig-line {
-            border-top: 1px solid #475569;
             font-size: 5.8pt;
             font-weight: 700;
             color: #1e293b;
-            padding-top: 1px;
-            width: 25mm;
+            line-height: 1;
           }
           @media print {
             .no-print {
@@ -495,7 +682,37 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
           <span>ડેશબોર્ડ પર પાછા જાઓ (Back to Dashboard)</span>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Header Background Toggle */}
+          <button
+            onClick={() => setHeaderTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl glass-card text-xs font-semibold text-[#e4ded6] hover:text-white transition-colors cursor-pointer border border-white/10"
+            title="હેડર બેકગ્રાઉન્ડ બદલો (ડાર્ક / વ્હાઇટ)"
+          >
+            <span
+              className="w-2.5 h-2.5 rounded-full border"
+              style={{
+                backgroundColor: headerTheme === 'dark' ? '#0f172a' : '#ffffff',
+                borderColor: '#f59c73',
+              }}
+            ></span>
+            <span>હેડર: {headerTheme === 'dark' ? 'ડાર્ક (Dark)' : 'વ્હાઇટ (White)'}</span>
+          </button>
+
+          {/* Logo Invert / Contrast Toggle */}
+          <button
+            onClick={() => setLogoContrast((c) => (c === 'normal' ? 'contrast' : 'normal'))}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl glass-card text-xs font-semibold text-[#e4ded6] hover:text-white transition-colors cursor-pointer border border-white/10"
+            title="લોગો કલર (ડાર્ક બેકગ્રાઉન્ડમાં વ્હાઇટ અને વ્હાઇટ બેકગ્રાઉન્ડમાં બ્લેક)"
+          >
+            <span className="font-bold text-[10px] px-1 py-0.2 rounded bg-white/20 text-[#f59c73]">
+              B/W
+            </span>
+            <span>
+              લોગો: {logoContrast === 'contrast' ? 'કોન્ટ્રાસ્ટ (White/Black)' : 'મૂળ કલર (Normal)'}
+            </span>
+          </button>
+
           <button
             onClick={handlePrint}
             className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-[#9d512d] hover:bg-[#b55e34] text-white text-xs font-bold shadow-lg transition-all cursor-pointer"
@@ -637,85 +854,153 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
                     }`}
                   >
                     {/* Card Header */}
-                    <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-2.5 text-center border-b border-white/10">
-                      <div
-                        className="font-extrabold text-white tracking-wide uppercase whitespace-nowrap overflow-hidden leading-tight"
-                        style={{
-                          fontSize: school.schoolName.length > 45 ? '10px' : school.schoolName.length > 30 ? '11.5px' : '13px',
-                          letterSpacing: school.schoolName.length > 40 ? '-0.2px' : '0.2px'
-                        }}
-                        title={school.schoolName}
-                      >
-                        {school.schoolName}
+                    <div
+                      className={`p-2.5 border-b-2 transition-colors ${
+                        headerTheme === 'dark'
+                          ? 'bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-[#f59c73] text-white'
+                          : 'bg-white border-[#e27d4e] text-slate-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        {school.logoUrl && (
+                          <div className="w-10 h-10 flex items-center justify-center shrink-0 bg-transparent">
+                            <img
+                              src={school.logoUrl}
+                              alt="Logo"
+                              className={`w-full h-full object-contain ${
+                                logoContrast === 'contrast'
+                                  ? headerTheme === 'dark'
+                                    ? 'brightness-0 invert'
+                                    : 'brightness-0'
+                                  : ''
+                              }`}
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                          <div
+                            className={`font-extrabold uppercase leading-tight whitespace-nowrap overflow-hidden text-ellipsis ${
+                              headerTheme === 'dark' ? 'text-white' : 'text-slate-900'
+                            }`}
+                            style={{
+                              fontSize:
+                                school.schoolName.length > 50
+                                  ? '10px'
+                                  : school.schoolName.length > 35
+                                  ? '11.5px'
+                                  : school.schoolName.length > 24
+                                  ? '12.5px'
+                                  : '14px',
+                              letterSpacing: school.schoolName.length > 40 ? '-0.2px' : '0.1px',
+                            }}
+                            title={school.schoolName}
+                          >
+                            {school.schoolName}
+                          </div>
+                          <div className="flex items-center justify-between gap-2 mt-0.5">
+                            <span
+                              className={`text-[10px] font-medium truncate ${
+                                headerTheme === 'dark' ? 'text-slate-300' : 'text-slate-600'
+                              }`}
+                            >
+                              DISE: {school.diseCode} {school.district ? `• ${school.district}` : ''}
+                            </span>
+                            <span
+                              className={`inline-block px-2 py-0.2 rounded text-[8.5px] font-extrabold tracking-wider whitespace-nowrap shrink-0 ${
+                                headerTheme === 'dark'
+                                  ? 'bg-[#f59c73] text-[#0f172a]'
+                                  : 'bg-[#e27d4e] text-white'
+                              }`}
+                            >
+                              વિદ્યાર્થી ID Card
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[9.5px] text-slate-300 mt-0.5 truncate">
-                        DISE: {school.diseCode} • {school.district}
-                      </div>
-                      <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-[#f59c73] text-[#0f172a]">
-                        વિદ્યાર્થી ઓળખપત્ર
-                      </span>
                     </div>
 
                     {/* Card Body */}
-                    <div className="p-3.5 flex gap-3.5 items-center">
-                      <div className="w-16 h-20 rounded-xl bg-slate-800 border border-slate-700 flex flex-col items-center justify-center shrink-0 overflow-hidden">
-                        {st.photoUrl ? (
-                          <img src={st.photoUrl} alt={st.studentName} className="w-full h-full object-cover" />
-                        ) : (
-                          <>
-                            <span className="text-xl font-bold text-[#f59c73]">
-                              {st.studentName.charAt(0) || 'S'}
-                            </span>
-                            <span className="text-[8px] text-slate-400 mt-1">PHOTO</span>
-                          </>
+                    <div className="p-3 flex gap-3 items-center">
+                      <div className="flex flex-col items-center shrink-0 gap-1">
+                        <div className="w-18 h-22 rounded-xl bg-slate-800 border-2 border-slate-700 flex flex-col items-center justify-center shrink-0 overflow-hidden shadow-inner">
+                          {st.photoUrl ? (
+                            <img src={st.photoUrl} alt={st.studentName} className="w-full h-full object-cover" />
+                          ) : (
+                            <>
+                              <span className="text-2xl font-black text-[#f59c73]">
+                                {st.studentName.charAt(0) || 'S'}
+                              </span>
+                              <span className="text-[8px] text-slate-400 font-bold mt-0.5 tracking-wider">PHOTO</span>
+                            </>
+                          )}
+                        </div>
+                        <span className="text-[9.5px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-white/10 text-center w-full">
+                          G.R. {st.grNumber || '-'}
+                        </span>
+                        {st.bloodGroup && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-center w-full">
+                            {st.bloodGroup}
+                          </span>
                         )}
                       </div>
 
-                      <div className="flex-1 min-w-0 space-y-1 text-xs">
+                      <div className="flex-1 min-w-0 space-y-1.5 text-xs">
                         <div
-                          className={`whitespace-nowrap overflow-hidden leading-tight ${getPreviewNameFontSize(st.studentName)} bg-white/5 px-2 py-1 rounded-md border-l-2 border-[#f59c73]`}
+                          className="whitespace-nowrap overflow-hidden leading-tight font-black text-amber-300 text-[15px] sm:text-base bg-white/5 px-2.5 py-1.5 rounded-lg border-l-3 border-[#f59c73]"
                           title={st.studentName}
                         >
                           {st.studentName}
                         </div>
-                        <div className="text-[11px] text-[#a99f91] flex items-center justify-between">
-                          <span>
-                            ધોરણ:{' '}
-                            <strong className="text-white">
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+                          <div>
+                            <span className="text-[#a99f91]">ધોરણ: </span>
+                            <strong className="text-white font-bold">
                               {st.standard} {st.section || st.division ? `(${st.section || st.division})` : ''}
                             </strong>
-                          </span>
-                          <span>
-                            રોલ: <span className="text-white font-mono">{st.rollNumber || '-'}</span>
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-[#a99f91] flex items-center justify-between">
-                          <span>
-                            G.R. નં: <span className="text-white font-mono">{st.grNumber || '-'}</span>
-                          </span>
-                          {st.bloodGroup && (
-                            <span className="text-rose-400 font-bold text-[10px]">
-                              {st.bloodGroup}
+                          </div>
+                          <div>
+                            <span className="text-[#a99f91]">રોલ: </span>
+                            <span className="text-white font-mono font-bold">{st.rollNumber || '-'}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-[#a99f91]">વિદ્યાર્થી DISE: </span>
+                            <span className="text-cyan-300 font-mono font-bold tracking-tight">
+                              {st.diseCode || st.studentStateCode || st.studentId || '-'}
                             </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-[#a99f91] flex items-center justify-between gap-1">
-                          <span className="whitespace-nowrap">
-                            જન્મ: <strong className="text-slate-200 font-normal">{st.dob || '-'}</strong>
-                          </span>
-                          {st.doa && (
-                            <span className="whitespace-nowrap bg-sky-950/50 text-sky-300 border border-sky-700/50 px-1.5 py-0.2 rounded text-[10px] font-semibold shrink-0">
-                              પ્રવેશ: {st.doa}
+                          </div>
+                          <div>
+                            <span className="text-[#a99f91]">જન્મ: </span>
+                            <span className="text-slate-200 font-mono text-[10px]">{st.dob || '-'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#a99f91]">પ્રવેશ: </span>
+                            <span className="text-sky-300 font-mono text-[10px]">{st.doa || '-'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#a99f91]">સંપર્ક: </span>
+                            <span className="text-emerald-400 font-mono text-[10px] font-semibold">{st.contactNumber || '-'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#a99f91]">જાતિ: </span>
+                            <span className="text-slate-300 text-[10px]">{st.caste || '-'}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-[#a99f91]">સરનામું: </span>
+                            <span className="text-slate-400 text-[10px] truncate">
+                              {st.address || school.village || school.district || '-'}
                             </span>
-                          )}
+                          </div>
                         </div>
                       </div>
                     </div>
 
                     {/* Card Footer */}
-                    <div className="px-4 py-2 bg-black/30 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
+                    <div className="px-4 py-2 bg-black/40 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-300 font-medium">
                       <span>શૈક્ષણિક વર્ષ ૨૦૨૬–૨૭</span>
-                      <span className="font-bold text-white">આચાર્યશ્રી સહી</span>
+                      <span className="font-bold text-white flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#f59c73]"></span>
+                        આચાર્યશ્રી સહી & સિક્કો
+                      </span>
                     </div>
                   </div>
                 );
@@ -740,48 +1025,130 @@ export const IdCardsManager: React.FC<IdCardsManagerProps> = ({
                       : 'border-white/10 opacity-60 hover:opacity-100'
                   }`}
                 >
-                  <div className="bg-[#78350f] p-3 text-center border-b border-amber-500/30">
-                    <div className="text-[11px] font-bold text-white tracking-wide uppercase truncate">
-                      {school.schoolName}
+                  <div
+                    className={`p-2.5 border-b-2 transition-colors ${
+                      headerTheme === 'dark'
+                        ? 'bg-gradient-to-r from-amber-950 via-[#78350f] to-amber-950 border-amber-400 text-white'
+                        : 'bg-white border-amber-600 text-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {school.logoUrl && (
+                        <div className="w-10 h-10 flex items-center justify-center shrink-0 bg-transparent">
+                          <img
+                            src={school.logoUrl}
+                            alt="Logo"
+                            className={`w-full h-full object-contain ${
+                              logoContrast === 'contrast'
+                                ? headerTheme === 'dark'
+                                  ? 'brightness-0 invert'
+                                  : 'brightness-0'
+                                : ''
+                            }`}
+                          />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <div
+                          className={`font-extrabold uppercase leading-tight whitespace-nowrap overflow-hidden text-ellipsis ${
+                            headerTheme === 'dark' ? 'text-white' : 'text-slate-900'
+                          }`}
+                          style={{
+                            fontSize:
+                              school.schoolName.length > 50
+                                ? '10px'
+                                : school.schoolName.length > 35
+                                ? '11.5px'
+                                : school.schoolName.length > 24
+                                ? '12.5px'
+                                : '14px',
+                            letterSpacing: school.schoolName.length > 40 ? '-0.2px' : '0.1px',
+                          }}
+                          title={school.schoolName}
+                        >
+                          {school.schoolName}
+                        </div>
+                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                          <span
+                            className={`text-[10px] font-medium truncate ${
+                              headerTheme === 'dark' ? 'text-amber-200' : 'text-slate-600'
+                            }`}
+                          >
+                            DISE: {school.diseCode} {school.district ? `• ${school.district}` : ''}
+                          </span>
+                          <span
+                            className={`inline-block px-2 py-0.2 rounded text-[8.5px] font-extrabold tracking-wider whitespace-nowrap shrink-0 ${
+                              headerTheme === 'dark'
+                                ? 'bg-amber-300 text-[#78350f]'
+                                : 'bg-amber-500 text-white'
+                            }`}
+                          >
+                            સ્ટાફ ID Card
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-[9px] text-amber-200">
-                      DISE: {school.diseCode} • {school.district}
-                    </div>
-                    <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-200 text-[#78350f]">
-                      સ્ટાફ ઓળખપત્ર (STAFF ID)
-                    </span>
                   </div>
 
-                  <div className="p-4 flex gap-3.5 items-center">
-                    <div className="w-16 h-20 rounded-xl bg-amber-950/40 border border-amber-700/40 flex flex-col items-center justify-center shrink-0">
-                      <span className="text-xl font-bold text-amber-400">
-                        {stf.fullName.charAt(0) || 'T'}
-                      </span>
-                      <span className="text-[8px] text-amber-300/60 mt-1">PHOTO</span>
+                  <div className="p-3 flex gap-3 items-center">
+                    <div className="flex flex-col items-center shrink-0 gap-1">
+                      <div className="w-18 h-22 rounded-xl bg-amber-950/40 border-2 border-amber-700/50 flex flex-col items-center justify-center shrink-0 shadow-inner">
+                        <span className="text-2xl font-black text-amber-300">
+                          {stf.fullName.charAt(0) || 'T'}
+                        </span>
+                        <span className="text-[8px] text-amber-200/70 font-bold mt-0.5 tracking-wider">PHOTO</span>
+                      </div>
+                      {stf.bloodGroup && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-center w-full">
+                          {stf.bloodGroup}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-1 text-xs">
                       <div
-                        className={`font-bold text-[#e4ded6] whitespace-nowrap overflow-hidden leading-tight ${getPreviewNameFontSize(stf.fullName)}`}
+                        className="whitespace-nowrap overflow-hidden leading-tight font-black text-[#fde68a] text-sm bg-white/5 px-2.5 py-1 rounded-lg border-l-3 border-amber-400"
                         title={stf.fullName}
                       >
                         {stf.fullName}
                       </div>
-                      <div className="text-[11px] text-amber-400 font-bold">
-                        {stf.designation}
-                      </div>
-                      <div className="text-[11px] text-[#a99f91]">
-                        વિષય: <span className="text-white">{stf.subject || '-'}</span>
-                      </div>
-                      <div className="text-[11px] text-[#a99f91]">
-                        મોબાઈલ: <span className="text-white font-mono">{stf.mobile || '-'}</span>
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px]">
+                        <div className="col-span-2">
+                          <span className="text-[#a99f91]">હોદ્દો: </span>
+                          <strong className="text-amber-300 font-bold">{stf.designation}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#a99f91]">વિષય: </span>
+                          <span className="text-white font-medium">{stf.subject || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[#a99f91]">લાયકાત: </span>
+                          <span className="text-slate-200">{stf.qualification || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[#a99f91]">મોબાઈલ: </span>
+                          <span className="text-white font-mono">{stf.mobile || '-'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[#a99f91]">જોડાવાની તારીખ: </span>
+                          <span className="text-sky-300 font-mono text-[10px]">{stf.joiningDate || '-'}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-[#a99f91]">સરનામું: </span>
+                          <span className="text-slate-400 text-[10px] truncate">
+                            {stf.address || school.district || '-'}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="px-4 py-2 bg-black/30 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
+                  <div className="px-4 py-2 bg-black/40 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-300 font-medium">
                     <span>શાળા સ્ટાફ રેકોર્ડ</span>
-                    <span className="font-bold text-white">આચાર્યશ્રી સહી</span>
+                    <span className="font-bold text-white flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                      આચાર્યશ્રી સહી & સિક્કો
+                    </span>
                   </div>
                 </div>
               );

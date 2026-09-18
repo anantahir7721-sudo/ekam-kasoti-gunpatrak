@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { loginSchool, registerSchool } from '../services/authService';
 import { loginAdmin } from '../services/adminService';
-import { School } from '../types';
+import { studentLogin } from '../services/onlineExamService';
+import { School, StudentSession } from '../types';
+import { compressSchoolLogo } from '../utils/imageUtils';
 import {
   School as SchoolIcon,
   Shield,
@@ -16,6 +18,11 @@ import {
   UserCheck,
   ChevronRight,
   Clock,
+  GraduationCap,
+  Calendar,
+  Upload,
+  Image as ImageIcon,
+  X,
 } from 'lucide-react';
 
 const GUJARAT_DISTRICTS = [
@@ -30,14 +37,16 @@ const GUJARAT_DISTRICTS = [
 interface AuthScreenProps {
   onSchoolAuthSuccess?: (school: School) => void;
   onAdminAuthSuccess?: () => void;
+  onStudentAuthSuccess?: (session: StudentSession) => void;
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   onSchoolAuthSuccess,
   onAdminAuthSuccess,
+  onStudentAuthSuccess,
 }) => {
-  // Top-level portal switch: School Login vs Admin Login
-  const [portalType, setPortalType] = useState<'school' | 'admin'>('school');
+  // Top-level portal switch: School Login vs Student Login vs Admin Login
+  const [portalType, setPortalType] = useState<'school' | 'student' | 'admin'>('school');
 
   // School sub-mode: Login vs Register
   const [schoolMode, setSchoolMode] = useState<'login' | 'register'>('login');
@@ -52,6 +61,30 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [schoolName, setSchoolName] = useState('');
   const [district, setDistrict] = useState('Ahmedabad');
+  const [schoolLogo, setSchoolLogo] = useState<string>('');
+  const [logoLoading, setLogoLoading] = useState(false);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoLoading(true);
+    setError(null);
+    try {
+      const compressed = await compressSchoolLogo(file);
+      setSchoolLogo(compressed);
+    } catch (err: any) {
+      setError(err.message || 'લોગો અપલોડ કરવામાં ભૂલ આવી.');
+    } finally {
+      setLogoLoading(false);
+    }
+  };
+
+  // Student Form states (DISE Code + DOB as Password + optional GR)
+  const [studentDiseCode, setStudentDiseCode] = useState('');
+  const [studentDob, setStudentDob] = useState('');
+  const [studentGrNumber, setStudentGrNumber] = useState('');
+  const [dobInputMode, setDobInputMode] = useState<'date' | 'text'>('date');
+  const [showExtraStudentFields, setShowExtraStudentFields] = useState(false);
 
   // Admin Form states (No hardcoded credentials!)
   const [adminIdentifier, setAdminIdentifier] = useState('');
@@ -119,6 +152,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         diseCode: cleanDise,
         district,
         password: schoolPassword,
+        logoUrl: schoolLogo || undefined,
       });
 
       setSuccessMessage(
@@ -175,6 +209,46 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
+  // Handle Student Login (DISE Code + DOB as Password + optional GR Number)
+  const handleStudentLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMessage(null);
+
+    const cleanDise = studentDiseCode.trim();
+    const cleanDob = studentDob.trim();
+    const cleanGr = studentGrNumber.trim();
+
+    if (!cleanDise) {
+      setError('કૃપા કરીને તમારો વિદ્યાર્થી DISE કોડ (Student DISE Code) દાખલ કરો.');
+      return;
+    }
+
+    if (!cleanDob) {
+      setError('કૃપા કરીને પાસવર્ડ તરીકે તમારી જન્મ તારીખ (Birthdate / Password) દાખલ કરો.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const session = await studentLogin({
+        studentDiseCode: cleanDise,
+        diseCode: cleanDise,
+        dob: cleanDob,
+        grNumber: cleanGr || undefined,
+      });
+      setSuccessMessage('વિદ્યાર્થી સફળતાપૂર્વક ચકાસાયેલ! પોર્ટલ ખુલી રહ્યું છે...');
+      if (onStudentAuthSuccess) {
+        onStudentAuthSuccess(session);
+      }
+    } catch (err: any) {
+      console.error('Student Login failed:', err);
+      setError(err.message || 'વિદ્યાર્થી લૉગિન નિષ્ફળ થયું. વિગતો ચકાસી ફરી પ્રયત્ન કરો.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-[calc(100vh-60px)] bg-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -184,11 +258,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg transition-all ${
               portalType === 'admin'
                 ? 'bg-red-500/20 border border-red-500/30 text-red-400 shadow-red-950/50'
-                : 'bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 shadow-emerald-950/50'
+                : portalType === 'student'
+                ? 'bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 shadow-emerald-950/50'
+                : 'bg-[#9d512d]/20 border border-[#9d512d]/30 text-[#e4ded6] shadow-black/50'
             }`}
           >
             {portalType === 'admin' ? (
               <Shield className="w-9 h-9" />
+            ) : portalType === 'student' ? (
+              <GraduationCap className="w-9 h-9" />
             ) : (
               <SchoolIcon className="w-9 h-9" />
             )}
@@ -204,6 +282,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         <p className="mt-1 text-center text-xs text-slate-400 font-medium">
           {portalType === 'admin'
             ? 'રાજ્ય એડમિનિસ્ટ્રેટર લૉગિન • Role-Based System Security'
+            : portalType === 'student'
+            ? 'વિદ્યાર્થી પોર્ટલ • ઓનલાઇન પરીક્ષા, ગુણ & પરિણામ'
             : 'ગુજરાત રાજ્ય શાળા ગુણાંકન પોર્ટલ • Multi-School System'}
         </p>
 
@@ -220,8 +300,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="glass-panel py-8 px-4 shadow-2xl shadow-black/60 sm:rounded-3xl sm:px-8 border border-white/10">
-          {/* PRIMARY PORTAL SELECTOR: [ School Login ] [ Admin Login ] */}
-          <div className="grid grid-cols-2 rounded-2xl bg-[#090c10]/90 p-1.5 border border-white/10 mb-6 shadow-inner">
+          {/* PRIMARY PORTAL SELECTOR: [ School Login ] [ Student Login ] [ Admin Login ] */}
+          <div className="grid grid-cols-3 rounded-2xl bg-[#090c10]/90 p-1.5 border border-white/10 mb-6 shadow-inner gap-1">
             <button
               id="tab-portal-school"
               type="button"
@@ -230,14 +310,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 setError(null);
                 setSuccessMessage(null);
               }}
-              className={`flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-xl transition-all ${
+              className={`flex items-center justify-center gap-1.5 py-2 px-2 text-xs font-bold rounded-xl transition-all ${
                 portalType === 'school'
                   ? 'bg-[#9d512d] text-white shadow-lg'
                   : 'text-[#a99f91] hover:text-[#e4ded6]'
               }`}
             >
-              <SchoolIcon className="w-4 h-4" />
-              <span>School Login</span>
+              <SchoolIcon className="w-3.5 h-3.5 shrink-0" />
+              <span>School</span>
+            </button>
+
+            <button
+              id="tab-portal-student"
+              type="button"
+              onClick={() => {
+                setPortalType('student');
+                setError(null);
+                setSuccessMessage(null);
+              }}
+              className={`flex items-center justify-center gap-1.5 py-2 px-2 text-xs font-bold rounded-xl transition-all ${
+                portalType === 'student'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg'
+                  : 'text-[#a99f91] hover:text-[#e4ded6]'
+              }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5 shrink-0" />
+              <span>Student</span>
             </button>
 
             <button
@@ -248,14 +346,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 setError(null);
                 setSuccessMessage(null);
               }}
-              className={`flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-xl transition-all ${
+              className={`flex items-center justify-center gap-1.5 py-2 px-2 text-xs font-bold rounded-xl transition-all ${
                 portalType === 'admin'
                   ? 'bg-rose-700 text-white shadow-lg'
                   : 'text-[#a99f91] hover:text-[#e4ded6]'
               }`}
             >
-              <Shield className="w-4 h-4" />
-              <span>Admin Login</span>
+              <Shield className="w-3.5 h-3.5 shrink-0" />
+              <span>Admin</span>
             </button>
           </div>
 
@@ -497,6 +595,49 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-xs font-semibold text-[#e4ded6] mb-1.5 flex items-center justify-between">
+                      <span>School Logo (શાળાનો લોગો)</span>
+                      <span className="text-[11px] text-[#a99f91] font-normal">(વૈકલ્પિક / Optional)</span>
+                    </label>
+                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10">
+                      {schoolLogo ? (
+                        <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-white/20 bg-white/10 shrink-0 flex items-center justify-center">
+                          <img src={schoolLogo} alt="School Logo Preview" className="w-full h-full object-contain p-1" />
+                          <button
+                            type="button"
+                            onClick={() => setSchoolLogo('')}
+                            className="absolute -top-1 -right-1 p-1 rounded-full bg-rose-600 text-white shadow hover:bg-rose-500"
+                            title="લોગો દૂર કરો"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-14 h-14 rounded-xl border border-dashed border-white/20 bg-white/5 shrink-0 flex flex-col items-center justify-center text-slate-400">
+                          <ImageIcon className="w-5 h-5 text-slate-400" />
+                          <span className="text-[9px] text-slate-400 mt-0.5">લોગો</span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold cursor-pointer border border-white/15 transition-all">
+                          <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>{logoLoading ? 'પ્રોસેસિંગ...' : schoolLogo ? 'લોગો બદલો' : 'શાળાનો લોગો અપલોડ કરો'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoUpload}
+                            className="hidden"
+                            disabled={logoLoading}
+                          />
+                        </label>
+                        <p className="text-[10px] text-[#a99f91] mt-1 truncate">
+                          આ લોગો ID કાર્ડ, પરિણામ અને ઓનલાઇન પરીક્ષામાં દેખાશે.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="pt-2">
                     <button
                       id="btn-register-submit"
@@ -520,7 +661,145 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           )}
 
           {/* ============================================================ */}
-          {/* SECTION B: ADMIN LOGIN (ADMIN MOBILE / ID & PASSWORD)        */}
+          {/* SECTION B: STUDENT PORTAL LOGIN (DISE CODE + BIRTHDATE PASSWORD) */}
+          {/* ============================================================ */}
+          {portalType === 'student' && (
+            <form onSubmit={handleStudentLogin} className="space-y-4">
+              {/* Simple Student Avatar Header */}
+              <div className="flex flex-col items-center justify-center text-center p-4 rounded-2xl bg-[#090c10]/60 border border-emerald-500/20">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/30 border-2 border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-950/40 mb-2.5 overflow-hidden">
+                  <GraduationCap className="w-8 h-8" />
+                </div>
+                <h3 className="text-sm font-bold text-white">વિદ્યાર્થી લૉગિન (Student Login)</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  શાળાના ડેટાબેઝ મુજબ તમારો DISE કોડ અને જન્મ તારીખ (પાસવર્ડ) દાખલ કરો
+                </p>
+              </div>
+
+              {/* Password info notice */}
+              <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/20 text-xs text-emerald-300 flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-emerald-200/90 leading-relaxed">
+                  <strong className="text-emerald-300">સુરક્ષિત લૉગિન:</strong> વિદ્યાર્થીઓ ત્યારે જ લૉગિન કરી શકે છે જ્યારે તેમનો DISE કોડ અને જન્મ તારીખ (પાસવર્ડ) શાળાના ડેટા સાથે મેળ ખાશે.
+                </p>
+              </div>
+
+              {/* 1. Student DISE Code Input */}
+              <div>
+                <label className="block text-xs font-semibold text-[#e4ded6] mb-1.5">
+                  વિદ્યાર્થીનો DISE કોડ (Student DISE Code) *
+                </label>
+                <div className="relative rounded-xl shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-emerald-400">
+                    <Hash className="w-4 h-4" />
+                  </div>
+                  <input
+                    id="input-student-dise"
+                    type="text"
+                    required
+                    autoFocus
+                    value={studentDiseCode}
+                    onChange={(e) => setStudentDiseCode(e.target.value.trim())}
+                    placeholder="દા.ત. 240104015021720076 (Child UID)"
+                    className="glass-input block w-full pl-10 pr-3 py-3 rounded-xl text-sm placeholder-[#a99f91]/60 font-mono tracking-wide focus:border-emerald-500"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-[#a99f91]">
+                  શાળા રેકોર્ડ / UDISE+ માં નોંધાયેલ ૧૮ આંકડાનો વિદ્યાર્થી DISE કોડ (Child UID)
+                </p>
+              </div>
+
+              {/* 2. Birthdate as Password (Mandatory) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-[#e4ded6] flex items-center gap-1.5">
+                    <span>જન્મ તારીખ / પાસવર્ડ (Birthdate) *</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-normal">
+                      Password
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setDobInputMode(dobInputMode === 'date' ? 'text' : 'date')}
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors font-medium cursor-pointer"
+                  >
+                    {dobInputMode === 'date' ? '✎ DD/MM/YYYY લખો' : '📅 કેલેન્ડર વાપરો'}
+                  </button>
+                </div>
+                <div className="relative rounded-xl shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-emerald-400">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <input
+                    id="input-student-dob"
+                    type={dobInputMode}
+                    required
+                    value={studentDob}
+                    onChange={(e) => setStudentDob(e.target.value)}
+                    placeholder={dobInputMode === 'date' ? undefined : 'DD/MM/YYYY (દા.ત. 15/08/2010)'}
+                    className="glass-input block w-full pl-10 pr-3 py-3 rounded-xl text-sm placeholder-[#a99f91]/60 font-mono tracking-wide focus:border-emerald-500"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-[#a99f91]">
+                  પાસવર્ડ તરીકે શાળાના રેકોર્ડ મુજબની જન્મ તારીખ (DD/MM/YYYY અથવા YYYY-MM-DD)
+                </p>
+              </div>
+
+              {/* Optional GR Number (if multiple students have same DISE code) */}
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowExtraStudentFields(!showExtraStudentFields)}
+                  className="text-[11px] text-slate-400 hover:text-slate-300 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <span>{showExtraStudentFields ? '▲ G.R. નંબર છુપાવો' : '▼ જો G.R. નંબર પણ આપવો હોય (વૈકલ્પિક)'}</span>
+                </button>
+              </div>
+
+              {showExtraStudentFields && (
+                <div className="p-3 rounded-xl bg-[#090c10]/40 border border-white/5 space-y-1 animate-fadeIn">
+                  <label className="block text-xs font-semibold text-[#e4ded6] mb-1">
+                    G.R. નંબર <span className="text-slate-400 font-normal">(જો શાળા તરફથી આપવામાં આવ્યો હોય)</span>
+                  </label>
+                  <div className="relative rounded-xl shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#a99f91]">
+                      <UserCheck className="w-4 h-4" />
+                    </div>
+                    <input
+                      id="input-student-gr"
+                      type="text"
+                      value={studentGrNumber}
+                      onChange={(e) => setStudentGrNumber(e.target.value)}
+                      placeholder="દા.ત. 124"
+                      className="glass-input block w-full pl-10 pr-3 py-2 rounded-xl text-xs placeholder-[#a99f91]/60"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Login Button */}
+              <div className="pt-2">
+                <button
+                  id="btn-student-login-submit"
+                  type="submit"
+                  disabled={loading}
+                  className="w-full flex justify-center items-center py-3 px-4 rounded-2xl shadow-lg text-sm font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      ચકાસણી થઈ રહી છે...
+                    </span>
+                  ) : (
+                    'લૉગિન કરો (Verify & Login)'
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* ============================================================ */}
+          {/* SECTION C: ADMIN LOGIN (ADMIN MOBILE / ID & PASSWORD)        */}
           {/* ============================================================ */}
           {portalType === 'admin' && (
             <form onSubmit={handleAdminLogin} className="space-y-4">

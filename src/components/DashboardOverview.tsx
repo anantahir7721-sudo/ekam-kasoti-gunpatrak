@@ -101,6 +101,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       actionText: 'પરીક્ષાઓ & કસોટી',
     },
     {
+      id: 'online_exams' as ActiveTabType,
+      title: '📝 ઓનલાઇન MCQ પરીક્ષા કેન્દ્ર (Online Exam Center)',
+      desc: 'શાળાકીય અને એક્સ્ટ્રા MCQ પરીક્ષાઓ, ઓટો-ઇવેલ્યુએશન, AI પ્રશ્ન આયાત, પ્રશ્ન બેંક અને પરિણામ એનાલિટિક્સ.',
+      icon: <FileText className="w-5 h-5 text-teal-400" />,
+      badge: 'MCQs & AI Importer',
+      color: 'hover:border-teal-500/40',
+      actionText: 'ઓનલાઇન કસોટી',
+    },
+    {
       id: 'results' as ActiveTabType,
       title: 'વાર્ષિક પરિણામ અને પ્રગતિ પત્રક (Results)',
       desc: 'GSEB પરિપત્ર મુજબ પરિણામ ગેઝેટ, સિદ્ધિ ગુણ (#), કૃપા ગુણ (*) ના નિયમો અને સત્તાવાર A4 પ્રગતિ પત્રક.',

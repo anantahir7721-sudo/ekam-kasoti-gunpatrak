@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { School } from '../types';
 import { updateSchoolProfile } from '../services/firestoreService';
+import { compressSchoolLogo } from '../utils/imageUtils';
+import { LogoCropModal } from './LogoCropModal';
 import {
   Building2,
   Lock,
@@ -14,6 +16,10 @@ import {
   BookOpen,
   ArrowLeft,
   Calendar,
+  Upload,
+  Image as ImageIcon,
+  Trash2,
+  Crop,
 } from 'lucide-react';
 
 interface SchoolProfileManagerProps {
@@ -40,11 +46,58 @@ export const SchoolProfileManager: React.FC<SchoolProfileManagerProps> = ({
     contactEmail: school.contactEmail || '',
     contactPhone: school.contactPhone || '',
     establishedYear: school.establishedYear || '',
+    logoUrl: school.logoUrl || '',
   });
 
   const [saving, setSaving] = useState(false);
+  const [logoLoading, setLogoLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Logo Crop Modal States
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropSourceImage, setCropSourceImage] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('કૃપા કરીને માન્ય ઇમેજ ફાઇલ પસંદ કરો (Please select a valid image file).');
+      return;
+    }
+
+    setLogoLoading(true);
+    setErrorMsg(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setCropSourceImage(result);
+      setCropModalOpen(true);
+      setLogoLoading(false);
+      // Reset input value so same file can be selected again if needed
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+    reader.onerror = () => {
+      setErrorMsg('ઇમેજ વાંચવામાં ભૂલ આવી. કૃપા કરીને ફરી પ્રયાસ કરો.');
+      setLogoLoading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCropComplete = (croppedBase64: string) => {
+    setFormData((prev) => ({ ...prev, logoUrl: croppedBase64 }));
+    setSuccessMsg('લોગો ક્રોપ થઈ ગયો છે! શાળા પ્રોફાઇલ સેવ કરવાનું ભૂલતા નહીં.');
+    setTimeout(() => setSuccessMsg(null), 3500);
+  };
+
+  const handleRemoveLogo = () => {
+    setFormData((prev) => ({ ...prev, logoUrl: '' }));
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -139,6 +192,83 @@ export const SchoolProfileManager: React.FC<SchoolProfileManagerProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSave} className="mt-6 space-y-6">
+          {/* Section 0: School Logo */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                {formData.logoUrl ? (
+                  <div className="relative w-20 h-20 rounded-2xl overflow-hidden bg-white/10 border border-white/20 shrink-0 p-1 flex items-center justify-center shadow-lg">
+                    <img
+                      src={formData.logoUrl}
+                      alt="School Logo"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-white/20 bg-white/5 shrink-0 flex flex-col items-center justify-center text-slate-400">
+                    <ImageIcon className="w-8 h-8 text-slate-400" />
+                    <span className="text-[10px] text-slate-400 mt-1 font-medium">લોગો નથી</span>
+                  </div>
+                )}
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>શાળાનો સત્તાવાર લોગો (School Logo)</span>
+                    {formData.logoUrl && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        અપલોડેડ
+                      </span>
+                    )}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-1 max-w-md">
+                    આ લોગો વિદ્યાર્થી ID કાર્ડ, પરિણામ પત્રકો, A4 પ્રિન્ટ અને ઓનલાઇન પરીક્ષા સ્ક્રીન પર શાળાના નામ સાથે દેખાશે.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+                {formData.logoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCropSourceImage(formData.logoUrl);
+                      setCropModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all shadow-sm"
+                    title="લોગો ક્રોપ / સાઇઝ ગોઠવો"
+                  >
+                    <Crop className="w-4 h-4" />
+                    <span>ક્રોપ & સાઇઝ ફિટ કરો</span>
+                  </button>
+                )}
+
+                <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white text-xs font-bold shadow-md cursor-pointer transition-all">
+                  <Upload className="w-4 h-4" />
+                  <span>{logoLoading ? 'પ્રોસેસિંગ...' : formData.logoUrl ? 'લોગો બદલો' : 'નવો લોગો અપલોડ કરો'}</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                    disabled={logoLoading}
+                  />
+                </label>
+
+                {formData.logoUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    className="px-3 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                    title="લોગો હટાવો"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span className="hidden sm:inline">હટાવો</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Section 1: Basic Information */}
           <div>
             <h3 className="text-sm font-bold text-[#e4ded6] flex items-center gap-2 mb-4">
@@ -353,6 +483,17 @@ export const SchoolProfileManager: React.FC<SchoolProfileManagerProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Interactive Logo Cropper & Sizing Modal */}
+      {cropModalOpen && (
+        <LogoCropModal
+          isOpen={cropModalOpen}
+          imageSrc={cropSourceImage}
+          schoolName={formData.schoolName || school.schoolName}
+          onClose={() => setCropModalOpen(false)}
+          onCropComplete={handleCropComplete}
+        />
+      )}
     </div>
   );
 };

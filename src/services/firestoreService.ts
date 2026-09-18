@@ -638,6 +638,7 @@ export async function updateSchoolProfile(
     contactEmail?: string;
     contactPhone?: string;
     establishedYear?: string;
+    logoUrl?: string;
   }
 ): Promise<void> {
   const schoolRef = doc(db, 'schools', schoolId);

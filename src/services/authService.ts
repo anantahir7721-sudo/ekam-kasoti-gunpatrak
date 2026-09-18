@@ -32,6 +32,7 @@ export interface RegisterSchoolParams {
   diseCode: string;
   district: string;
   password: string;
+  logoUrl?: string;
 }
 
 /**
@@ -45,6 +46,7 @@ export async function registerSchool({
   diseCode,
   district,
   password,
+  logoUrl,
 }: RegisterSchoolParams): Promise<{ user: User; school: School }> {
   const cleanDise = diseCode.trim();
   if (!cleanDise) {
@@ -74,6 +76,7 @@ export async function registerSchool({
       status: 'pending', // Initially pending admin approval
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      logoUrl: logoUrl || '',
     };
 
     // 3. Save to Firestore under /schools/{uid}

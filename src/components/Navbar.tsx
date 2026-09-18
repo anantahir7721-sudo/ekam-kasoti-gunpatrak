@@ -23,6 +23,7 @@ export type ActiveTabType =
   | 'staff'
   | 'marks'
   | 'exams'
+  | 'online_exams'
   | 'results'
   | 'idcards'
   | 'certificates'
@@ -51,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'students', label: 'વિદ્યાર્થીઓ', icon: <Users className="w-3.5 h-3.5" /> },
     { id: 'staff', label: 'સ્ટાફ', icon: <UserCheck className="w-3.5 h-3.5" /> },
     { id: 'exams', label: 'પરીક્ષાઓ & કસોટી', icon: <BookOpen className="w-3.5 h-3.5" /> },
+    { id: 'online_exams', label: '📝 ઓનલાઇન MCQ', icon: <FileText className="w-3.5 h-3.5 text-emerald-400" /> },
     { id: 'results', label: 'પરિણામ', icon: <Award className="w-3.5 h-3.5" /> },
     { id: 'idcards', label: 'ID Cards', icon: <CreditCard className="w-3.5 h-3.5" /> },
   ];

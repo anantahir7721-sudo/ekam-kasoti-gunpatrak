@@ -124,13 +124,26 @@ export const CertificatesManager: React.FC<CertificatesManagerProps> = ({
             padding-bottom: 15px;
             margin-bottom: 25px;
           }
+          .school-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 5px;
+          }
+          .school-logo {
+            width: 55px;
+            height: 55px;
+            object-fit: contain;
+            border-radius: 6px;
+          }
           .school-name {
             font-size: 22pt;
             font-weight: 800;
             color: #1e3a8a;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin: 0 0 5px 0;
+            margin: 0;
           }
           .school-sub {
             font-size: 11pt;
@@ -223,7 +236,10 @@ export const CertificatesManager: React.FC<CertificatesManagerProps> = ({
         <div class="border-frame">
           <div>
             <div class="header">
-              <h1 class="school-name">${school.schoolName}</h1>
+              <div class="school-header-row">
+                ${school.logoUrl ? `<img src="${school.logoUrl}" alt="School Logo" class="school-logo" />` : ''}
+                <h1 class="school-name">${school.schoolName}</h1>
+              </div>
               <div class="school-sub">${school.address || `${school.district} જિલ્લો, ગુજરાત`} • DISE: ${school.diseCode}</div>
               <div class="title-strip">${titleText}</div>
             </div>

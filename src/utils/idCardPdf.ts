@@ -8,19 +8,19 @@ import { School, Student } from '../types';
 function getStudentNameInlineStyle(name: string): string {
   const len = (name || '').trim().length;
   if (len <= 16) {
-    return 'font-size: 13.5px; font-weight: 900;';
+    return 'font-size: 15.5px; font-weight: 900;';
   } else if (len <= 21) {
-    return 'font-size: 12.2px; font-weight: 900; letter-spacing: -0.1px;';
+    return 'font-size: 14.2px; font-weight: 900; letter-spacing: -0.1px;';
   } else if (len <= 26) {
-    return 'font-size: 11.2px; font-weight: 800; letter-spacing: -0.15px;';
+    return 'font-size: 13.0px; font-weight: 800; letter-spacing: -0.15px;';
   } else if (len <= 32) {
-    return 'font-size: 10.2px; font-weight: 800; letter-spacing: -0.2px;';
+    return 'font-size: 12.0px; font-weight: 800; letter-spacing: -0.2px;';
   } else if (len <= 38) {
-    return 'font-size: 9.4px; font-weight: 800; letter-spacing: -0.25px;';
+    return 'font-size: 11.0px; font-weight: 800; letter-spacing: -0.25px;';
   } else if (len <= 44) {
-    return 'font-size: 8.6px; font-weight: 800; letter-spacing: -0.3px;';
+    return 'font-size: 10.0px; font-weight: 800; letter-spacing: -0.3px;';
   } else {
-    return 'font-size: 8.0px; font-weight: 800; letter-spacing: -0.35px;';
+    return 'font-size: 9.2px; font-weight: 800; letter-spacing: -0.35px;';
   }
 }
 
@@ -44,18 +44,19 @@ function getParentNameInlineStyle(name: string): string {
  */
 function getSchoolNameInlineStyle(name: string): string {
   const len = (name || '').trim().length;
-  if (len <= 22) {
-    return 'font-size: 13.5px; font-weight: 800; letter-spacing: 0.2px;';
-  } else if (len <= 30) {
-    return 'font-size: 12px; font-weight: 800; letter-spacing: 0.1px;';
-  } else if (len <= 38) {
-    return 'font-size: 10.8px; font-weight: 800; letter-spacing: 0px;';
-  } else if (len <= 48) {
-    return 'font-size: 9.8px; font-weight: 800; letter-spacing: -0.15px;';
-  } else if (len <= 58) {
-    return 'font-size: 8.8px; font-weight: 700; letter-spacing: -0.25px;';
+  // Strict single-line fit: dynamically scales so school name NEVER wraps or gets cut
+  if (len <= 18) {
+    return 'font-size: 13.5px; font-weight: 800; letter-spacing: 0.1px; white-space: nowrap;';
+  } else if (len <= 26) {
+    return 'font-size: 12.2px; font-weight: 800; letter-spacing: 0px; white-space: nowrap;';
+  } else if (len <= 34) {
+    return 'font-size: 11.0px; font-weight: 800; letter-spacing: -0.15px; white-space: nowrap;';
+  } else if (len <= 42) {
+    return 'font-size: 10.0px; font-weight: 800; letter-spacing: -0.2px; white-space: nowrap;';
+  } else if (len <= 52) {
+    return 'font-size: 9.0px; font-weight: 800; letter-spacing: -0.3px; white-space: nowrap;';
   } else {
-    return 'font-size: 8.0px; font-weight: 700; letter-spacing: -0.35px;';
+    return 'font-size: 8.0px; font-weight: 700; letter-spacing: -0.35px; white-space: nowrap;';
   }
 }
 
@@ -87,22 +88,42 @@ export function printStudentIdCards(school: School, students: Student[]) {
       const dobDisplay = st.dob || '-';
       const doaDisplay = st.doa || '-';
       const bloodDisplay = st.bloodGroup || '-';
-      const parentName = st.fatherName || st.motherName || '-';
+      const studentDise =
+        (st.diseCode && st.diseCode.trim()) ||
+        (st.studentStateCode && st.studentStateCode.trim()) ||
+        (st.studentId && st.studentId.trim()) ||
+        '-';
+      const parentName =
+        st.fatherName && st.fatherName.trim()
+          ? st.fatherName.trim()
+          : st.motherName && st.motherName.trim()
+          ? st.motherName.trim()
+          : (() => {
+              const parts = (st.studentName || '').trim().split(/\s+/);
+              if (parts.length >= 3) return parts[1] + (parts[2] ? ' ' + parts[2] : '');
+              if (parts.length === 2) return parts[1];
+              return '-';
+            })();
       const contactDisplay = st.contactNumber || st.mobileNumber || '-';
-      const addressDisplay = st.address || school.address || school.district || '-';
+      const addressDisplay = st.address || school.address || school.village || school.district || '-';
 
       return `
         <div class="id-card-wrapper">
           <div class="id-card">
             <!-- Header -->
             <div class="card-header">
-              <div class="school-name" style="${getSchoolNameInlineStyle(school.schoolName)}" title="${school.schoolName}">
-                ${school.schoolName}
+              <div class="school-header-row">
+                ${school.logoUrl ? `<img src="${school.logoUrl}" alt="Logo" class="school-header-logo" />` : ''}
+                <div class="school-header-text">
+                  <div class="school-name" style="${getSchoolNameInlineStyle(school.schoolName)}" title="${school.schoolName}">
+                    ${school.schoolName}
+                  </div>
+                  <div class="school-meta-row">
+                    <span class="school-meta">${school.district || ''} ${school.taluka ? `• તા. ${school.taluka}` : ''} • DISE: ${schoolDise}</span>
+                    <span class="card-banner">વિદ્યાર્થી ID Card</span>
+                  </div>
+                </div>
               </div>
-              <div class="school-meta">
-                ${school.district || ''} ${school.taluka ? `• તા. ${school.taluka}` : ''} • DISE: ${st.diseCode || schoolDise}
-              </div>
-              <div class="card-banner">વિદ્યાર્થી ઓળખપત્ર • STUDENT ID CARD</div>
             </div>
 
             <!-- Body -->
@@ -139,6 +160,10 @@ export function printStudentIdCards(school: School, students: Student[]) {
                     <td class="val">${st.rollNumber || '-'}</td>
                   </tr>
                   <tr>
+                    <td class="lbl">વિદ્યાર્થી DISE:</td>
+                    <td class="val mono-dise" colspan="3" style="font-family: monospace; font-weight: 800; color: #0369a1; letter-spacing: 0.2px;">${studentDise}</td>
+                  </tr>
+                  <tr>
                     <td class="lbl">જન્મ:</td>
                     <td class="val val-dob">${dobDisplay}</td>
                     <td class="lbl lbl-doa">પ્રવેશ:</td>
@@ -149,10 +174,6 @@ export function printStudentIdCards(school: School, students: Student[]) {
                     <td class="val highlight-blood">${bloodDisplay}</td>
                     <td class="lbl lbl-caste">જાતિ:</td>
                     <td class="val">${st.caste || '-'}</td>
-                  </tr>
-                  <tr>
-                    <td class="lbl">વાલીનું નામ:</td>
-                    <td class="val parent-name" colspan="3" style="${getParentNameInlineStyle(parentName)}">${parentName}</td>
                   </tr>
                   <tr>
                     <td class="lbl">સંપર્ક:</td>
@@ -170,10 +191,9 @@ export function printStudentIdCards(school: School, students: Student[]) {
             <div class="card-footer">
               <div class="footer-left">
                 <div class="validity">શૈક્ષણિક વર્ષ ૨૦૨૬–૨૭</div>
-                ${schoolContact ? `<div class="school-contact">📞 ${schoolContact}</div>` : ''}
               </div>
               <div class="footer-right">
-                <div class="sig-line">આચાર્યશ્રી સહી</div>
+                <div class="sig-line">આચાર્યશ્રી સહી & સિક્કો</div>
               </div>
             </div>
           </div>
@@ -247,8 +267,8 @@ export function printStudentIdCards(school: School, students: Student[]) {
         }
 
         .id-card {
-          width: 90mm;
-          height: 57mm;
+          width: 86mm;
+          height: 54mm;
           border: 1.5px solid #1e293b;
           border-radius: 8px;
           overflow: hidden;
@@ -256,76 +276,115 @@ export function printStudentIdCards(school: School, students: Student[]) {
           position: relative;
           display: flex;
           flex-direction: column;
-          box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+          box-sizing: border-box;
+          justify-content: space-between;
         }
 
         /* Card Header */
         .card-header {
-          background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+          background: linear-gradient(135deg, #090d16 0%, #1e293b 100%);
           color: #ffffff;
-          padding: 5px 6px 3px 6px;
-          border-bottom: 2px solid #e27d4e;
-          text-align: center;
+          padding: 2.2mm 3.5mm 1.8mm 3.5mm;
+          border-bottom: 2px solid #f59c73;
+          text-align: left;
+          box-sizing: border-box;
+        }
+
+        .school-header-row {
+          display: flex;
+          align-items: center;
+          gap: 5.5px;
+          width: 100%;
+        }
+
+        .school-header-logo {
+          width: 10.5mm;
+          height: 10.5mm;
+          max-width: 10.5mm;
+          max-height: 10.5mm;
+          object-fit: contain;
+          background: transparent !important;
+          padding: 0;
+          flex-shrink: 0;
+          border: none !important;
+        }
+
+        .school-header-text {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          text-align: left;
         }
 
         .school-name {
           width: 100%;
-          text-align: center;
+          text-align: left;
           font-weight: 800;
           text-transform: uppercase;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: clip;
-          letter-spacing: 0.2px;
+          line-height: 1.15;
           color: #ffffff;
-          line-height: 1.2;
-          margin-bottom: 1.5px;
+          letter-spacing: 0.1px;
+          white-space: nowrap !important;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          margin-bottom: 1px;
+        }
+
+        .school-meta-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          gap: 4px;
         }
 
         .school-meta {
-          width: 100%;
-          text-align: center;
-          font-size: 8px;
+          font-size: 7.2px;
           color: #cbd5e1;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
           line-height: 1.15;
-          margin-bottom: 2px;
         }
 
         .card-banner {
-          background: #9d512d;
-          color: #ffffff;
+          background: #f59c73;
+          color: #0f172a;
           text-align: center;
-          font-size: 8px;
-          font-weight: 700;
-          padding: 1.5px 0;
-          border-radius: 2px;
-          letter-spacing: 0.5px;
-          line-height: 1.2;
+          font-size: 6.5px;
+          font-weight: 800;
+          padding: 0.5px 5px;
+          border-radius: 4px;
+          white-space: nowrap;
+          letter-spacing: 0.2px;
+          text-transform: uppercase;
+          flex-shrink: 0;
         }
 
         /* Card Body */
         .card-body {
           flex: 1;
           display: flex;
-          padding: 4px 6px;
+          padding: 2.2mm 3.5mm;
           gap: 6px;
           background: #fafafa;
+          align-items: center;
+          box-sizing: border-box;
         }
 
         .photo-col {
-          width: 23mm;
           display: flex;
           flex-direction: column;
           align-items: center;
           flex-shrink: 0;
+          gap: 2px;
         }
 
         .photo-container {
-          width: 22mm;
-          height: 27mm;
+          width: 19mm;
+          height: 22mm;
           border: 1px solid #94a3b8;
           border-radius: 4px;
           overflow: hidden;
@@ -405,30 +464,24 @@ export function printStudentIdCards(school: School, students: Student[]) {
           background: #f1f5f9;
           border-left: 3.5px solid #e27d4e;
           border-bottom: 1px solid #cbd5e1;
-          padding: 2px 4px 2px 5px;
-          margin-bottom: 3px;
+          padding: 2.5px 5px 2.5px 6px;
+          margin-bottom: 3.5px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: clip;
-          line-height: 1.2;
+          line-height: 1.25;
           border-radius: 0 4px 4px 0;
-        }
-
-        .details-table .parent-name {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: clip;
         }
 
         .details-table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 8.5px;
-          line-height: 1.35;
+          font-size: 8.8px;
+          line-height: 1.42;
         }
 
         .details-table td {
-          padding: 1px 1px;
+          padding: 1.5px 1px;
           vertical-align: middle;
         }
 
@@ -492,40 +545,41 @@ export function printStudentIdCards(school: School, students: Student[]) {
         /* Card Footer */
         .card-footer {
           background: #f8fafc;
-          border-top: 1px solid #e2e8f0;
-          padding: 2px 6px 3px 6px;
+          border-top: 1px solid #cbd5e1;
+          padding: 1.2mm 3.5mm;
           display: flex;
           justify-content: space-between;
-          align-items: flex-end;
+          align-items: center;
+          height: 6.5mm;
+          box-sizing: border-box;
+          margin-top: auto;
         }
 
         .footer-left {
-          line-height: 1.15;
+          line-height: 1;
         }
 
         .validity {
-          font-size: 7.5px;
-          font-weight: 700;
-          color: #059669;
+          font-size: 5.8pt;
+          font-weight: 600;
+          color: #475569;
         }
 
         .school-contact {
-          font-size: 7.5px;
+          font-size: 5.5pt;
           color: #64748b;
         }
 
         .footer-right {
           text-align: right;
+          line-height: 1;
         }
 
         .sig-line {
-          font-size: 8px;
+          font-size: 5.8pt;
           font-weight: 700;
           color: #1e293b;
-          border-top: 1px dashed #94a3b8;
-          padding-top: 2px;
-          min-width: 20mm;
-          text-align: center;
+          line-height: 1;
         }
       </style>
     </head>
